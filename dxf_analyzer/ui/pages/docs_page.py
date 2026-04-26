@@ -5,6 +5,7 @@
 import streamlit as st
 import os
 import subprocess
+from pathlib import Path
 
 
 def render_docs_page():
@@ -79,13 +80,23 @@ def render_docs_page():
     with col2:
         # Кнопка открытия в браузере
         abs_path = os.path.abspath(docs_file)
-        file_url = f"file:///{abs_path}".replace("\\", "/")
         
-        st.link_button(
-            "🌐 Открыть в браузере",
-            file_url,
-            use_container_width=True
-        )
+        st.markdown(f"""
+        <a href="file:///{abs_path.replace(chr(92), '/')}" target="_blank">
+            <button style="
+                width: 100%;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 14px;
+            ">
+                🌐 Открыть в браузере
+            </button>
+        </a>
+        """, unsafe_allow_html=True)
     
     with col3:
         # Кнопка скачивания
@@ -97,19 +108,20 @@ def render_docs_page():
             data=html_content,
             file_name="project_documentation.html",
             mime="text/html",
-            use_container_width=True
+            use_container_width=True,
+            key="download_docs_html"
         )
     
     st.markdown("---")
     
     # Вкладки для разных способов отображения
-    tab1, tab2, tab3 = st.tabs(["📊 Статистика", "📖 Содержание", "💻 Исходный код"])
+    tab1, tab2, tab3 = st.tabs(["📊 Статистика", "📖 Структура проекта", "💻 Исходный код"])
     
     with tab1:
         _render_statistics()
     
     with tab2:
-        _render_table_of_contents()
+        _render_project_structure()
     
     with tab3:
         _render_source_code_viewer()
@@ -119,7 +131,15 @@ def _render_statistics():
     """Отрисовка статистики проекта"""
     st.markdown("### 📊 Статистика проекта")
     
-    base_dir = "as3901177-cmd-calculator"
+    # Определяем базовую директорию
+    current_dir = os.getcwd()
+    base_dir = os.path.join(current_dir, "as3901177-cmd-calculator")
+    
+    # Если папка не существует, ищем dxf_analyzer в текущей директории
+    if not os.path.exists(base_dir):
+        base_dir = current_dir
+    
+    st.info(f"📂 Анализируемая директория: `{base_dir}`")
     
     # Подсчёт файлов и строк
     total_files = 0
@@ -127,37 +147,53 @@ def _render_statistics():
     total_size = 0
     
     files_by_type = {
-        'Python': 0,
-        'Config': 0,
-        'Docs': 0
+        'Python (.py)': 0,
+        'Конфигурация': 0,
+        'Документация': 0,
+        'Прочее': 0
     }
+    
+    lines_by_module = {}
     
     for root, dirs, files in os.walk(base_dir):
         # Пропускаем служебные директории
-        dirs[:] = [d for d in dirs if d not in ['__pycache__', '.git', 'venv', 'env']]
+        dirs[:] = [d for d in dirs if d not in ['__pycache__', '.git', 'venv', 'env', '.venv', 'node_modules']]
         
         for file in files:
             filepath = os.path.join(root, file)
             
-            if file.endswith('.py'):
-                files_by_type['Python'] += 1
-                total_files += 1
-                
-                try:
+            try:
+                if file.endswith('.py'):
+                    files_by_type['Python (.py)'] += 1
+                    total_files += 1
+                    
                     with open(filepath, 'r', encoding='utf-8') as f:
                         content = f.read()
-                        total_lines += len(content.split('\n'))
+                        lines = len(content.split('\n'))
+                        total_lines += lines
                         total_size += len(content.encode('utf-8'))
-                except:
-                    pass
+                        
+                        # Определяем модуль
+                        rel_path = os.path.relpath(root, base_dir)
+                        module_name = rel_path.split(os.sep)[0] if os.sep in rel_path else 'root'
+                        
+                        if module_name not in lines_by_module:
+                            lines_by_module[module_name] = 0
+                        lines_by_module[module_name] += lines
+                
+                elif file.endswith(('.txt', '.ini', '.toml', '.cfg', '.yaml', '.yml')):
+                    files_by_type['Конфигурация'] += 1
+                    total_files += 1
+                
+                elif file.endswith(('.md', '.rst')):
+                    files_by_type['Документация'] += 1
+                    total_files += 1
+                
+                else:
+                    files_by_type['Прочее'] += 1
             
-            elif file.endswith(('.txt', '.ini', '.toml', '.cfg')):
-                files_by_type['Config'] += 1
-                total_files += 1
-            
-            elif file.endswith(('.md', '.rst')):
-                files_by_type['Docs'] += 1
-                total_files += 1
+            except Exception as e:
+                continue
     
     # Метрики
     col1, col2, col3, col4 = st.columns(4)
@@ -172,70 +208,128 @@ def _render_statistics():
         st.metric("💾 Размер кода", f"{total_size / 1024:.1f} КБ")
     
     with col4:
-        st.metric("🐍 Python файлов", files_by_type['Python'])
+        st.metric("🐍 Python файлов", files_by_type['Python (.py)'])
     
     st.markdown("---")
     
     # Распределение по типам
-    st.markdown("#### 📂 Распределение файлов по типам")
+    col_left, col_right = st.columns(2)
     
-    import pandas as pd
-    df_types = pd.DataFrame({
-        'Тип': list(files_by_type.keys()),
-        'Количество': list(files_by_type.values())
-    })
+    with col_left:
+        st.markdown("#### 📂 Файлы по типам")
+        
+        import pandas as pd
+        df_types = pd.DataFrame({
+            'Тип': list(files_by_type.keys()),
+            'Количество': list(files_by_type.values())
+        })
+        
+        st.dataframe(df_types, use_container_width=True, hide_index=True)
     
-    st.bar_chart(df_types.set_index('Тип'))
+    with col_right:
+        st.markdown("#### 📐 Строки кода по модулям")
+        
+        if lines_by_module:
+            df_modules = pd.DataFrame({
+                'Модуль': list(lines_by_module.keys()),
+                'Строк': list(lines_by_module.values())
+            }).sort_values('Строк', ascending=False).head(10)
+            
+            st.dataframe(df_modules, use_container_width=True, hide_index=True)
+        else:
+            st.info("Нет данных о модулях")
 
 
-def _render_table_of_contents():
-    """Отрисовка оглавления проекта"""
+def _render_project_structure():
+    """Отрисовка структуры проекта"""
     st.markdown("### 📖 Структура проекта")
     
-    base_dir = "as3901177-cmd-calculator"
+    # Определяем базовую директорию
+    current_dir = os.getcwd()
+    base_dir = os.path.join(current_dir, "as3901177-cmd-calculator")
+    
+    if not os.path.exists(base_dir):
+        base_dir = current_dir
+    
+    # Корневые файлы
+    with st.expander("📄 Корневые файлы", expanded=True):
+        root_files = []
+        
+        for item in os.listdir(base_dir):
+            item_path = os.path.join(base_dir, item)
+            if os.path.isfile(item_path):
+                root_files.append(item)
+        
+        root_files.sort()
+        
+        for file in root_files:
+            if file.endswith('.py'):
+                st.markdown(f"🐍 `{file}`")
+            elif file.endswith(('.txt', '.md')):
+                st.markdown(f"📝 `{file}`")
+            else:
+                st.markdown(f"📄 `{file}`")
     
     # Модули проекта
-    modules = {
-        "🎯 Core (Ядро)": "dxf_analyzer/core",
-        "📄 Parsers (Парсеры)": "dxf_analyzer/parsers",
-        "🧮 Calculators (Калькуляторы)": "dxf_analyzer/calculators",
-        "📐 Geometry (Геометрия)": "dxf_analyzer/geometry",
-        "🔺 Nesting (Раскрой)": "dxf_analyzer/nesting",
-        "🎨 Visualization (Визуализация)": "dxf_analyzer/visualization",
-        "📥 Export (Экспорт)": "dxf_analyzer/export",
-        "🔧 Utils (Утилиты)": "dxf_analyzer/utils",
-        "💻 UI (Интерфейс)": "dxf_analyzer/ui"
+    modules_info = {
+        "🎯 dxf_analyzer/core": "Ядро системы (модели, конфигурация, ошибки)",
+        "📄 dxf_analyzer/parsers": "Парсинг DXF файлов",
+        "🧮 dxf_analyzer/calculators": "Расчёт длины объектов",
+        "📐 dxf_analyzer/geometry": "Геометрические операции и анализ связности",
+        "🔺 dxf_analyzer/nesting": "Оптимизация раскроя",
+        "🎨 dxf_analyzer/visualization": "Визуализация чертежей",
+        "📥 dxf_analyzer/export": "Экспорт результатов",
+        "🔧 dxf_analyzer/utils": "Вспомогательные функции",
+        "💻 dxf_analyzer/ui": "Пользовательский интерфейс"
     }
     
-    for module_name, module_path in modules.items():
-        full_path = os.path.join(base_dir, module_path)
+    for module_info, description in modules_info.items():
+        module_name = module_info.split()[1]
+        module_path = os.path.join(base_dir, module_name.replace('/', os.sep))
         
-        if os.path.exists(full_path):
-            with st.expander(module_name, expanded=False):
-                files = []
-                for root, dirs, filenames in os.walk(full_path):
-                    for filename in filenames:
-                        if filename.endswith('.py'):
-                            rel_path = os.path.relpath(os.path.join(root, filename), base_dir)
-                            files.append(rel_path)
+        if os.path.exists(module_path):
+            with st.expander(f"{module_info}", expanded=False):
+                st.caption(description)
+                st.markdown("---")
                 
-                files.sort()
+                # Рекурсивно обходим все файлы
+                files_list = []
                 
-                for file in files:
-                    st.markdown(f"- `{file}`")
+                for root, dirs, files in os.walk(module_path):
+                    dirs[:] = [d for d in dirs if d not in ['__pycache__']]
+                    
+                    for file in files:
+                        if file.endswith('.py'):
+                            rel_path = os.path.relpath(os.path.join(root, file), module_path)
+                            files_list.append(rel_path)
+                
+                files_list.sort()
+                
+                for file in files_list:
+                    indent = "  " * (file.count(os.sep))
+                    st.markdown(f"{indent}📄 `{file}`")
+        else:
+            st.warning(f"⚠️ Модуль `{module_name}` не найден")
 
 
 def _render_source_code_viewer():
     """Отрисовка просмотрщика исходного кода"""
     st.markdown("### 💻 Просмотр исходного кода")
     
-    base_dir = "as3901177-cmd-calculator"
+    # Определяем базовую директорию
+    current_dir = os.getcwd()
+    base_dir = os.path.join(current_dir, "as3901177-cmd-calculator")
+    
+    if not os.path.exists(base_dir):
+        base_dir = current_dir
+    
+    st.info(f"📂 Рабочая директория: `{base_dir}`")
     
     # Получение списка всех Python файлов
     python_files = []
     
     for root, dirs, files in os.walk(base_dir):
-        dirs[:] = [d for d in dirs if d not in ['__pycache__', '.git', 'venv', 'env']]
+        dirs[:] = [d for d in dirs if d not in ['__pycache__', '.git', 'venv', 'env', '.venv']]
         
         for file in files:
             if file.endswith('.py'):
@@ -247,7 +341,10 @@ def _render_source_code_viewer():
     
     if not python_files:
         st.warning("⚠️ Не найдено Python файлов")
+        st.info("Проверьте, что проект находится в правильной директории")
         return
+    
+    st.success(f"✅ Найдено {len(python_files)} Python файлов")
     
     # Выбор файла
     selected_file = st.selectbox(
@@ -267,7 +364,7 @@ def _render_source_code_viewer():
             lines = len(content.split('\n'))
             size = len(content.encode('utf-8'))
             
-            col1, col2, col3 = st.columns(3)
+            col1, col2, col3, col4 = st.columns(4)
             
             with col1:
                 st.metric("📝 Строк", lines)
@@ -275,33 +372,20 @@ def _render_source_code_viewer():
                 st.metric("💾 Размер", f"{size} байт")
             with col3:
                 st.metric("📏 Символов", len(content))
+            with col4:
+                st.metric("📂 Путь", f".../{os.path.basename(selected_file)}")
             
             st.markdown("---")
+            
+            # Кнопка копирования
+            st.code(f"Путь: {selected_file}", language="text")
             
             # Отображение кода
             st.code(content, language="python", line_numbers=True)
             
         except Exception as e:
             st.error(f"❌ Ошибка чтения файла: {e}")
-
-
-# Запасной вариант для прямого просмотра HTML
-def _render_html_preview():
-    """Альтернативный метод отображения HTML (если основной не работает)"""
-    docs_file = "project_documentation.html"
-    
-    if not os.path.exists(docs_file):
-        return
-    
-    st.markdown("### 📄 HTML Предпросмотр")
-    
-    try:
-        with open(docs_file, 'r', encoding='utf-8') as f:
-            html_content = f.read()
-        
-        # Попытка отображения через iframe
-        st.components.v1.html(html_content, height=800, scrolling=True)
-        
-    except Exception as e:
-        st.error(f"❌ Ошибка отображения HTML: {e}")
-        st.info("💡 Используйте кнопку 'Открыть в браузере' выше")
+            
+            import traceback
+            with st.expander("🔍 Детали ошибки"):
+                st.code(traceback.format_exc())
