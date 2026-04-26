@@ -1,5 +1,5 @@
 """
-Main application page
+Главная страница приложения
 """
 
 import streamlit as st
@@ -19,112 +19,112 @@ from ..components.metrics_display import display_summary_metrics, display_pierci
 from ..components.data_table import display_statistics_table, display_color_table
 from .nesting_page import render_nesting_page
 
-# Auto-install dependencies
+# Автоустановка зависимостей
 install_dependencies()
 
 try:
     import ezdxf
 except ImportError as e:
-    st.error(f"❌ Error loading ezdxf: {e}")
-    st.info("🔄 Try reloading the page")
+    st.error(f"❌ Ошибка загрузки ezdxf: {e}")
+    st.info("🔄 Попробуйте перезагрузить страницу")
     st.stop()
 
 
 def render_main_page():
-    """Render main application page"""
+    """Отрисовка главной страницы приложения"""
     
-    st.title("📐 CAD Analyzer Pro v24.0")
-    st.markdown("**Professional DXF analyzer for CNC and laser cutting**")
+    st.title("📐 Анализатор Чертежей CAD Pro v24.0")
+    st.markdown("**Профессиональный расчет длины реза для станков ЧПУ и лазерной резки**")
     
-    # Info sections
+    # Информационные секции
     _render_info_sections()
     
     st.markdown("---")
     
-    # File upload
-    uploaded_file = st.file_uploader("📂 Upload DXF drawing", type=["dxf"])
+    # Загрузка файла
+    uploaded_file = st.file_uploader("📂 Загрузите чертеж в формате DXF", type=["dxf"])
     
     if uploaded_file is not None:
         _process_file(uploaded_file)
     else:
         _render_welcome_message()
     
-    # Footer
+    # Футер
     _render_footer()
 
 
 def _render_info_sections():
-    """Render information expanders"""
-    with st.expander("ℹ️ Piercing Count Information"):
+    """Отрисовка информационных блоков"""
+    with st.expander("ℹ️ Информация о подсчёте врезок"):
         st.markdown("""
-        ### 📍 How piercings are counted:
+        ### 📍 Как считаются врезки (точки прожига):
         
-        **What is a piercing:**
-        - Point where laser starts cutting
-        - Each **connected chain of objects** = **1 piercing**
+        **Что такое врезка:**
+        - Это точка, где лазер включается для начала резки
+        - Каждая **связанная цепь объектов** = **1 врезка**
         
-        **Examples:**
-        - 1 circle = 1 piercing ✅
-        - 4 LINEs forming rectangle = 1 piercing ✅ (if endpoints match)
-        - 4 unconnected LINEs = 4 piercings ✅
-        - 2 arcs forming circle = 1 piercing ✅ (if gap < tolerance)
+        **Примеры:**
+        - 1 окружность = 1 врезка ✅
+        - 4 LINE, образующих прямоугольник = 1 врезка ✅ (если концы совпадают)
+        - 4 несвязанных LINE = 4 врезки ✅
+        - 2 дуги, образующих окружность = 1 врезка ✅ (если зазор < допуска)
         
-        **Algorithm:**
-        1. Closed objects (CIRCLE, closed polylines) = isolated chains
-        2. For open objects: build connectivity graph by endpoint proximity
-        3. Tolerance 0.1 mm (configurable)
-        4. Each found chain = 1 piercing
+        **Алгоритм:**
+        1. Замкнутые объекты (CIRCLE, замкнутые полилинии) = изолированные цепи
+        2. Для открытых объектов строим граф связности по близости концов
+        3. Используется допуск 0.1 мм (настраивается)
+        4. Каждая найденная цепь = 1 врезка
         """)
     
-    with st.expander("ℹ️ Color Information"):
+    with st.expander("ℹ️ Информация о цветах"):
         st.markdown("""
-        ### Display modes:
+        ### Режимы отображения чертежа:
         
-        **Mode 1: Original colors from file (default)**
-        - Lines shown in original DXF colors
-        - Errors highlighted with red outline
+        **Режим 1: Исходные цвета из файла (по умолчанию)**
+        - Линии отображаются теми цветами, которые установлены в DXF файле
+        - Ошибки выделяются красной обводкой поверх исходного цвета
         
-        **Mode 2: Error indication**
-        - Black = Normal objects (counted)
-        - Orange = Warnings (counted with correction)
-        - Red = Errors (excluded)
-        - Gray = Skipped
+        **Режим 2: Индикация ошибок**
+        - Чёрный = Нормальные объекты (учтены)
+        - Оранжевый = Предупреждения (учтены с коррекцией)
+        - Красный = Ошибки (исключены)
+        - Серый = Пропущены
         
-        **Mode 3: Chain visualization (NEW v24.0)**
-        - Each chain highlighted with unique color
-        - Helps visualize connected objects
+        **Режим 3: Визуализация цепей (НОВОЕ v24.0)**
+        - Каждая цепь выделена уникальным цветом
+        - Помогает увидеть связанные объекты
         """)
 
 
 def _process_file(uploaded_file):
-    """Process uploaded DXF file"""
-    # Check file size
+    """Обработка загруженного DXF файла"""
+    # Проверка размера файла
     file_size_mb = uploaded_file.size / (1024 * 1024)
     if file_size_mb > MAX_FILE_SIZE_MB:
-        st.error(f"❌ File too large: {file_size_mb:.1f} MB (max: {MAX_FILE_SIZE_MB} MB)")
+        st.error(f"❌ Файл слишком большой: {file_size_mb:.1f} МБ (максимум: {MAX_FILE_SIZE_MB} МБ)")
         st.stop()
     
     collector = ErrorCollector()
     
-    with st.spinner('⏳ Processing drawing...'):
+    with st.spinner('⏳ Обработка чертежа...'):
         try:
-            # Read DXF
+            # Чтение DXF
             doc, temp_path = read_dxf_file(uploaded_file, collector)
             
-            # Extract entities
+            # Извлечение объектов
             objects_data = extract_entities(doc, collector)
             
-            # Calculate statistics
+            # Расчёт статистики
             stats, color_stats, total_length = _calculate_statistics(objects_data)
             
-            # Count piercings
+            # Подсчёт врезок
             piercing_count, piercing_details = count_piercings_advanced(objects_data, collector)
             
-            # Display results
+            # Отображение результатов
             show_error_report(collector)
             
             if not objects_data:
-                st.warning("⚠️ No objects found in drawing")
+                st.warning("⚠️ В чертеже не найдено объектов для расчета")
             else:
                 _display_results(
                     objects_data, total_length, piercing_count,
@@ -132,21 +132,21 @@ def _process_file(uploaded_file):
                 )
         
         except Exception as e:
-            collector.add_error('SYSTEM', 0, f"Critical error: {e}", type(e).__name__)
+            collector.add_error('SYSTEM', 0, f"Критическая ошибка: {e}", type(e).__name__)
             show_error_report(collector)
             
             import traceback
-            with st.expander("🔍 Error traceback"):
+            with st.expander("🔍 Трассировка ошибки"):
                 st.code(traceback.format_exc())
 
 
 def _calculate_statistics(objects_data):
-    """Calculate statistics from objects"""
+    """Расчёт статистики по объектам"""
     stats = {}
     total_length = 0.0
     
     for obj in objects_data:
-        # Stats by type
+        # Статистика по типам
         if obj.entity_type not in stats:
             stats[obj.entity_type] = {
                 'count': 0,
@@ -163,7 +163,7 @@ def _calculate_statistics(objects_data):
         
         total_length += obj.length
     
-    # Color stats
+    # Статистика по цветам
     color_stats = analyze_colors(objects_data)
     
     return stats, color_stats, total_length
@@ -171,53 +171,53 @@ def _calculate_statistics(objects_data):
 
 def _display_results(objects_data, total_length, piercing_count, 
                      piercing_details, stats, color_stats, doc, collector):
-    """Display analysis results"""
+    """Отображение результатов анализа"""
     
-    # Summary
+    # Сводка
     if collector.has_errors:
-        st.success(f"✅ Processed: **{len(objects_data)}** objects "
-                  f"(🔴 {len(collector.errors)} errors)")
+        st.success(f"✅ Обработано: **{len(objects_data)}** объектов "
+                  f"(🔴 {len(collector.errors)} ошибок)")
     else:
-        st.success(f"✅ Processed: **{len(objects_data)}** objects")
+        st.success(f"✅ Обработано: **{len(objects_data)}** объектов")
     
-    # Metrics
-    st.markdown("### 📏 Total Cut Length:")
+    # Метрики
+    st.markdown("### 📏 Итоговая длина реза:")
     display_summary_metrics(total_length, len(objects_data), piercing_count)
     
-    # Piercing statistics
-    st.markdown("### 📍 Piercing Statistics (connectivity analysis):")
+    # Статистика врезок
+    st.markdown("### 📍 Статистика врезок (анализ связности):")
     display_piercing_metrics(piercing_details)
     
-    # Chain details
+    # Детали цепей
     if piercing_details['chains']:
         _display_chain_details(piercing_details['chains'])
     
     st.markdown("---")
     
-    # Tables and visualization
+    # Таблицы и визуализация
     col_left, col_right = st.columns([1, 1.5])
     
     with col_left:
-        st.markdown("### 📊 Statistics by Type")
+        st.markdown("### 📊 Сводная спецификация по типам")
         display_statistics_table(stats)
         
-        st.markdown("### 🎨 Statistics by Color")
+        st.markdown("### 🎨 Статистика по цветам")
         display_color_table(color_stats)
         
-        # Export buttons
+        # Кнопки экспорта
         _render_export_buttons(objects_data, stats)
     
     with col_right:
         _render_visualization(doc, objects_data, collector)
     
-    # Nesting module
+    # Модуль раскроя
     st.markdown("---")
     render_nesting_page(objects_data)
 
 
 def _display_chain_details(chains):
-    """Display chain details table"""
-    with st.expander(f"🔍 Chain Details ({len(chains)} chains)", expanded=False):
+    """Отображение детальной таблицы цепей"""
+    with st.expander(f"🔍 Детали цепей ({len(chains)} шт.)", expanded=False):
         chains_rows = []
         
         for chain in chains:
@@ -229,36 +229,36 @@ def _display_chain_details(chains):
             
             chains_rows.append({
                 'ID': chain['chain_id'],
-                'Type': f"{emoji} {chain['type']}",
-                'Objects': chain['objects_count'],
-                'Object Numbers': ', '.join(map(str, chain['objects'])),
-                'Entity Types': ', '.join(chain['entity_types']),
-                'Length (mm)': round(chain['total_length'], 2)
+                'Тип': f"{emoji} {chain['type']}",
+                'Объектов': chain['objects_count'],
+                'Номера объектов': ', '.join(map(str, chain['objects'])),
+                'Типы': ', '.join(chain['entity_types']),
+                'Длина (мм)': round(chain['total_length'], 2)
             })
         
         df_chains = pd.DataFrame(chains_rows)
         st.dataframe(df_chains, use_container_width=True, hide_index=True)
         
         st.download_button(
-            label="📥 Download Chain Details (CSV)",
+            label="📥 Скачать детали цепей (CSV)",
             data=df_chains.to_csv(index=False, encoding='utf-8-sig'),
-            file_name="chain_details.csv",
+            file_name="детали_цепей.csv",
             mime="text/csv"
         )
 
 
 def _render_export_buttons(objects_data, stats):
-    """Render export buttons"""
-    st.markdown("### 📥 Export")
+    """Отрисовка кнопок экспорта"""
+    st.markdown("### 📥 Экспорт")
     
     col1, col2 = st.columns(2)
     
     with col1:
         csv_data = export_to_csv(objects_data)
         st.download_button(
-            label="📄 Objects CSV",
+            label="📄 Объекты CSV",
             data=csv_data,
-            file_name="objects_data.csv",
+            file_name="объекты.csv",
             mime="text/csv",
             use_container_width=True
         )
@@ -266,35 +266,35 @@ def _render_export_buttons(objects_data, stats):
     with col2:
         stats_csv = export_statistics_to_csv(stats)
         st.download_button(
-            label="📊 Statistics CSV",
+            label="📊 Статистика CSV",
             data=stats_csv,
-            file_name="statistics.csv",
+            file_name="статистика.csv",
             mime="text/csv",
             use_container_width=True
         )
 
 
 def _render_visualization(doc, objects_data, collector):
-    """Render visualization section"""
-    st.markdown("### 🎨 Drawing Visualization")
+    """Отрисовка секции визуализации"""
+    st.markdown("### 🎨 Чертеж с цветовой индикацией")
     
     display_mode = st.radio(
-        "Display mode:",
-        options=["Original Colors", "Error Indication", "Chain Visualization"],
+        "Режим отображения:",
+        options=["Исходные цвета", "Индикация ошибок", "Визуализация цепей"],
         horizontal=True
     )
     
-    use_original_colors = display_mode == "Original Colors"
-    show_chains = display_mode == "Chain Visualization"
+    use_original_colors = display_mode == "Исходные цвета"
+    show_chains = display_mode == "Визуализация цепей"
     
-    show_markers = st.checkbox("🔴 Show markers", value=True)
+    show_markers = st.checkbox("🔴 Показать маркеры", value=True)
     font_size_multiplier = st.slider(
-        "📏 Font size",
+        "📏 Размер шрифта",
         min_value=0.5, max_value=3.0,
         value=1.0, step=0.1
     ) if show_markers else 1.0
     
-    with st.spinner('Generating visualization...'):
+    with st.spinner('Генерация визуализации...'):
         fig, error_msg = visualize_dxf_with_status_indicators(
             doc, objects_data, collector,
             show_markers, font_size_multiplier,
@@ -305,30 +305,47 @@ def _render_visualization(doc, objects_data, collector):
             st.pyplot(fig, use_container_width=True)
             if show_chains:
                 piercing_count = len(set(obj.chain_id for obj in objects_data))
-                st.info(f"💡 Each color = separate chain. Found {piercing_count} chains.")
+                st.info(f"💡 Каждый цвет = отдельная цепь. Найдено {piercing_count} цепей.")
         else:
-            st.error(f"❌ {error_msg}" if error_msg else "❌ Failed to create visualization")
+            st.error(f"❌ {error_msg}" if error_msg else "❌ Не удалось создать визуализацию")
 
 
 def _render_welcome_message():
-    """Render welcome message"""
-    st.info("👈 Upload DXF drawing to start")
+    """Отрисовка приветственного сообщения"""
+    st.info("👈 Загрузите DXF-чертеж для начала")
     st.markdown("""
-    ### 📝 About v24.0:
+    ### 📝 О версии v24.0:
     
-    **MAIN IMPROVEMENT:**
-    - ✅ **CORRECT piercing count with connectivity analysis**
-    - ✅ Algorithm finds connected objects (adjacency graph)
-    - ✅ Rectangle from 4 LINEs = 1 piercing (not 4!)
-    - ✅ Chain visualization with different colors
+    **ГЛАВНОЕ УЛУЧШЕНИЕ:**
+    - ✅ **ПРАВИЛЬНЫЙ подсчёт врезок с анализом связности**
+    - ✅ Алгоритм находит связанные объекты (граф смежности)
+    - ✅ Прямоугольник из 4 LINE = 1 врезка (не 4!)
+    - ✅ Визуализация цепей разными цветами
+    
+    **Поддерживаемые типы объектов:**
+    - LINE (отрезки)
+    - ARC (дуги)
+    - CIRCLE (окружности)
+    - POLYLINE, LWPOLYLINE (полилинии)
+    - SPLINE (сплайны)
+    - ELLIPSE (эллипсы)
+    
+    **Возможности:**
+    - 📏 Точный расчёт длины реза
+    - 🔵 Умный подсчёт врезок
+    - 🎨 Визуализация с индикацией ошибок
+    - 🔗 Визуализация цепей связанных объектов
+    - 📊 Детальная статистика по типам и цветам
+    - 📥 Экспорт в CSV
+    - 🔺 Модуль раскроя с паркетной тесселяцией
     """)
 
 
 def _render_footer():
-    """Render footer"""
+    """Отрисовка футера"""
     st.markdown("---")
     st.markdown("""
     <div style='text-align: center; color: gray; font-size: 12px;'>
-        ✂️ CAD Analyzer Pro v24.0 | MIT License | CONNECTIVITY ANALYSIS
+        ✂️ CAD Analyzer Pro v24.0 | Лицензия MIT | АНАЛИЗ СВЯЗНОСТИ КОНТУРОВ
     </div>
     """, unsafe_allow_html=True)
