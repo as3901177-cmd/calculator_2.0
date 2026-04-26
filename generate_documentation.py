@@ -22,108 +22,57 @@ def count_lines(content: str) -> int:
     return len(content.split('\n'))
 
 
+def escape_html(text: str) -> str:
+    """Экранирование HTML символов"""
+    return (text
+            .replace('&', '&amp;')
+            .replace('<', '&lt;')
+            .replace('>', '&gt;')
+            .replace('"', '&quot;')
+            .replace("'", '&#39;'))
+
+
 def generate_documentation():
     """Генерация HTML-документации"""
     
-    base_dir = "as3901177-cmd-calculator"
+    # Определяем базовую директорию
+    current_dir = os.getcwd()
+    base_dir = os.path.join(current_dir, "as3901177-cmd-calculator")
     
-    # Список файлов для документации
-    files_to_document = [
-        # Корневые файлы
-        "app.py",
-        "requirements.txt",
-        "setup.py",
-        "README.md",
+    # Если папка не существует, используем текущую директорию
+    if not os.path.exists(base_dir):
+        base_dir = current_dir
+        print(f"⚠️  Папка 'as3901177-cmd-calculator' не найдена, используется: {base_dir}")
+    else:
+        print(f"✅ Анализируемая директория: {base_dir}")
+    
+    # Автоматический сбор всех Python файлов
+    files_to_document = []
+    
+    print("\n🔍 Поиск Python файлов...")
+    
+    for root, dirs, files in os.walk(base_dir):
+        # Пропускаем служебные директории
+        dirs[:] = [d for d in dirs if d not in ['__pycache__', '.git', 'venv', 'env', '.venv', 'node_modules']]
         
-        # Core
-        "dxf_analyzer/__init__.py",
-        "dxf_analyzer/version.py",
-        "dxf_analyzer/core/__init__.py",
-        "dxf_analyzer/core/models.py",
-        "dxf_analyzer/core/config.py",
-        "dxf_analyzer/core/errors.py",
-        "dxf_analyzer/core/exceptions.py",
-        
-        # Parsers
-        "dxf_analyzer/parsers/__init__.py",
-        "dxf_analyzer/parsers/dxf_reader.py",
-        "dxf_analyzer/parsers/entity_extractor.py",
-        "dxf_analyzer/parsers/layer_analyzer.py",
-        
-        # Calculators
-        "dxf_analyzer/calculators/__init__.py",
-        "dxf_analyzer/calculators/base.py",
-        "dxf_analyzer/calculators/line_calculator.py",
-        "dxf_analyzer/calculators/arc_calculator.py",
-        "dxf_analyzer/calculators/circle_calculator.py",
-        "dxf_analyzer/calculators/polyline_calculator.py",
-        "dxf_analyzer/calculators/spline_calculator.py",
-        "dxf_analyzer/calculators/ellipse_calculator.py",
-        "dxf_analyzer/calculators/registry.py",
-        
-        # Geometry
-        "dxf_analyzer/geometry/__init__.py",
-        "dxf_analyzer/geometry/transforms.py",
-        "dxf_analyzer/geometry/bounds.py",
-        "dxf_analyzer/geometry/connectivity.py",
-        "dxf_analyzer/geometry/chain_builder.py",
-        "dxf_analyzer/geometry/piercing_counter.py",
-        
-        # Nesting
-        "dxf_analyzer/nesting/__init__.py",
-        "dxf_analyzer/nesting/models.py",
-        "dxf_analyzer/nesting/optimizer.py",
-        "dxf_analyzer/nesting/algorithms/__init__.py",
-        "dxf_analyzer/nesting/algorithms/base_algorithm.py",
-        "dxf_analyzer/nesting/algorithms/parquet_tessellation.py",
-        "dxf_analyzer/nesting/algorithms/bottom_left.py",
-        "dxf_analyzer/nesting/converters/__init__.py",
-        "dxf_analyzer/nesting/converters/dxf_to_shapely.py",
-        "dxf_analyzer/nesting/converters/simplifiers.py",
-        "dxf_analyzer/nesting/optimization/__init__.py",
-        "dxf_analyzer/nesting/optimization/position_generator.py",
-        "dxf_analyzer/nesting/optimization/placement_evaluator.py",
-        
-        # Visualization
-        "dxf_analyzer/visualization/__init__.py",
-        "dxf_analyzer/visualization/renderers/__init__.py",
-        "dxf_analyzer/visualization/renderers/matplotlib_renderer.py",
-        "dxf_analyzer/visualization/styles/__init__.py",
-        "dxf_analyzer/visualization/styles/color_schemes.py",
-        "dxf_analyzer/visualization/styles/status_colors.py",
-        
-        # Export
-        "dxf_analyzer/export/__init__.py",
-        "dxf_analyzer/export/csv_exporter.py",
-        "dxf_analyzer/export/report_generator.py",
-        
-        # Utils
-        "dxf_analyzer/utils/__init__.py",
-        "dxf_analyzer/utils/layer_utils.py",
-        "dxf_analyzer/utils/calculation_utils.py",
-        "dxf_analyzer/utils/color_utils.py",
-        "dxf_analyzer/utils/file_utils.py",
-        "dxf_analyzer/utils/math_utils.py",
-        
-        # UI
-        "dxf_analyzer/ui/__init__.py",
-        "dxf_analyzer/ui/pages/__init__.py",
-        "dxf_analyzer/ui/pages/main_page.py",
-        "dxf_analyzer/ui/pages/nesting_page.py",
-        "dxf_analyzer/ui/components/__init__.py",
-        "dxf_analyzer/ui/components/error_reporter.py",
-        "dxf_analyzer/ui/components/metrics_display.py",
-        "dxf_analyzer/ui/components/data_table.py",
-    ]
+        for file in files:
+            if file.endswith('.py') or file in ['requirements.txt', 'README.md', 'LICENSE', 'setup.py', '.gitignore']:
+                filepath = os.path.join(root, file)
+                rel_path = os.path.relpath(filepath, base_dir)
+                files_to_document.append(rel_path)
+                print(f"  📄 {rel_path}")
+    
+    files_to_document.sort()
+    
+    print(f"\n✅ Найдено файлов: {len(files_to_document)}")
     
     # HTML шаблон
-    html_template = """
-<!DOCTYPE html>
+    html_template = """<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAD Analyzer Pro v24.0 - Документация проекта</title>
+    <title>CAD Analyzer Pro v24.0 - Полная документация</title>
     <style>
         * {{
             margin: 0;
@@ -139,7 +88,7 @@ def generate_documentation():
         }}
         
         .container {{
-            max-width: 1400px;
+            max-width: 1600px;
             margin: 0 auto;
             padding: 20px;
         }}
@@ -151,6 +100,9 @@ def generate_documentation():
             margin-bottom: 30px;
             border-radius: 10px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
         }}
         
         h1 {{
@@ -195,12 +147,15 @@ def generate_documentation():
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             margin-bottom: 30px;
+            max-height: 600px;
+            overflow-y: auto;
         }}
         
         .toc h2 {{
             color: #667eea;
             margin-bottom: 20px;
             font-size: 1.8em;
+            sticky: top;
         }}
         
         .toc-section {{
@@ -263,47 +218,54 @@ def generate_documentation():
             opacity: 0.9;
         }}
         
-        .code-block {{
-            background: #f8f9fa;
-            border: 1px solid #e1e4e8;
+        .code-container {{
+            background: #282c34;
             border-radius: 6px;
+            overflow: hidden;
+        }}
+        
+        .code-header {{
+            background: #21252b;
+            padding: 10px 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #181a1f;
+        }}
+        
+        .code-lang {{
+            color: #abb2bf;
+            font-size: 0.9em;
+        }}
+        
+        .copy-btn {{
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 5px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85em;
+        }}
+        
+        .copy-btn:hover {{
+            background: #764ba2;
+        }}
+        
+        .code-block {{
+            background: #282c34;
             padding: 20px;
             overflow-x: auto;
             font-family: 'Courier New', monospace;
             font-size: 14px;
             line-height: 1.5;
+            color: #abb2bf;
         }}
         
-        .line-numbers {{
-            float: left;
-            text-align: right;
-            padding-right: 20px;
-            margin-right: 20px;
-            border-right: 1px solid #ddd;
-            color: #999;
-            user-select: none;
-        }}
-        
-        .code-content {{
-            overflow: visible;
-        }}
-        
-        .keyword {{
-            color: #d73a49;
-            font-weight: bold;
-        }}
-        
-        .string {{
-            color: #032f62;
-        }}
-        
-        .comment {{
-            color: #6a737d;
-            font-style: italic;
-        }}
-        
-        .function {{
-            color: #6f42c1;
+        .code-block pre {{
+            margin: 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
         }}
         
         footer {{
@@ -328,6 +290,7 @@ def generate_documentation():
             text-decoration: none;
             box-shadow: 0 4px 6px rgba(0,0,0,0.2);
             transition: all 0.3s;
+            font-size: 24px;
         }}
         
         .back-to-top:hover {{
@@ -335,8 +298,27 @@ def generate_documentation():
             transform: translateY(-5px);
         }}
         
+        .search-box {{
+            position: sticky;
+            top: 180px;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            z-index: 999;
+        }}
+        
+        .search-box input {{
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #667eea;
+            border-radius: 4px;
+            font-size: 16px;
+        }}
+        
         @media print {{
-            .back-to-top {{
+            .back-to-top, .search-box {{
                 display: none;
             }}
         }}
@@ -346,7 +328,7 @@ def generate_documentation():
     <div class="container">
         <header id="top">
             <h1>📐 CAD Analyzer Pro v24.0</h1>
-            <div class="subtitle">Полная документация проекта</div>
+            <div class="subtitle">Полная документация проекта со всем исходным кодом</div>
             <div class="subtitle">Сгенерировано: {generation_time}</div>
         </header>
         
@@ -356,12 +338,12 @@ def generate_documentation():
                 <div class="stat-label">Файлов</div>
             </div>
             <div class="stat-card">
-                <div class="stat-value">{total_lines}</div>
+                <div class="stat-value">{total_lines:,}</div>
                 <div class="stat-label">Строк кода</div>
             </div>
             <div class="stat-card">
-                <div class="stat-value">{total_modules}</div>
-                <div class="stat-label">Модулей</div>
+                <div class="stat-value">{python_files}</div>
+                <div class="stat-label">Python файлов</div>
             </div>
             <div class="stat-card">
                 <div class="stat-value">{file_size_kb} КБ</div>
@@ -369,8 +351,12 @@ def generate_documentation():
             </div>
         </div>
         
+        <div class="search-box">
+            <input type="text" id="searchInput" placeholder="🔍 Поиск по коду... (начните печатать)" onkeyup="searchCode()">
+        </div>
+        
         <div class="toc">
-            <h2>📑 Содержание</h2>
+            <h2>📑 Содержание ({total_files} файлов)</h2>
             {toc_content}
         </div>
         
@@ -379,18 +365,49 @@ def generate_documentation():
         <footer>
             <p>✂️ CAD Analyzer Pro v24.0 | MIT License</p>
             <p>Автоматически сгенерированная документация проекта</p>
+            <p>Всего: {total_files} файлов | {total_lines:,} строк | {file_size_kb} КБ</p>
         </footer>
     </div>
     
     <a href="#top" class="back-to-top">↑</a>
+    
+    <script>
+        function searchCode() {{
+            let input = document.getElementById('searchInput');
+            let filter = input.value.toLowerCase();
+            let sections = document.getElementsByClassName('file-section');
+            
+            for (let i = 0; i < sections.length; i++) {{
+                let codeBlock = sections[i].getElementsByClassName('code-block')[0];
+                let txtValue = codeBlock.textContent || codeBlock.innerText;
+                
+                if (txtValue.toLowerCase().indexOf(filter) > -1) {{
+                    sections[i].style.display = "";
+                }} else {{
+                    sections[i].style.display = "none";
+                }}
+            }}
+        }}
+        
+        function copyCode(id) {{
+            let codeBlock = document.getElementById('code-' + id);
+            let text = codeBlock.textContent;
+            
+            navigator.clipboard.writeText(text).then(function() {{
+                alert('✅ Код скопирован в буфер обмена!');
+            }}, function(err) {{
+                alert('❌ Ошибка копирования: ' + err);
+            }});
+        }}
+    </script>
 </body>
-</html>
-"""
+</html>"""
     
     # Сбор информации о файлах
     files_data = []
     total_lines = 0
     total_size = 0
+    python_files_count = 0
     
     for file_path in files_to_document:
         full_path = os.path.join(base_dir, file_path)
@@ -409,91 +426,106 @@ def generate_documentation():
             
             total_lines += lines
             total_size += size
+            
+            if file_path.endswith('.py'):
+                python_files_count += 1
     
-    # Генерация оглавления
-    toc_sections = {
-        'Корневые файлы': [],
-        'Core (Ядро)': [],
-        'Parsers (Парсеры)': [],
-        'Calculators (Калькуляторы)': [],
-        'Geometry (Геометрия)': [],
-        'Nesting (Раскрой)': [],
-        'Visualization (Визуализация)': [],
-        'Export (Экспорт)': [],
-        'Utils (Утилиты)': [],
-        'UI (Интерфейс)': []
+    # Генерация оглавления по категориям
+    categories = {
+        '📄 Корневые файлы': [],
+        '🎯 Core (Ядро)': [],
+        '📄 Parsers (Парсеры)': [],
+        '🧮 Calculators (Калькуляторы)': [],
+        '📐 Geometry (Геометрия)': [],
+        '🔺 Nesting (Раскрой)': [],
+        '🎨 Visualization (Визуализация)': [],
+        '📥 Export (Экспорт)': [],
+        '🔧 Utils (Утилиты)': [],
+        '💻 UI (Интерфейс)': []
     }
     
     for file_data in files_data:
         path = file_data['path']
-        file_id = path.replace('/', '_').replace('.', '_')
+        file_id = path.replace('/', '_').replace('.', '_').replace('\\', '_')
         
-        if '/' not in path:
-            toc_sections['Корневые файлы'].append((path, file_id))
-        elif 'core/' in path:
-            toc_sections['Core (Ядро)'].append((path, file_id))
-        elif 'parsers/' in path:
-            toc_sections['Parsers (Парсеры)'].append((path, file_id))
-        elif 'calculators/' in path:
-            toc_sections['Calculators (Калькуляторы)'].append((path, file_id))
-        elif 'geometry/' in path:
-            toc_sections['Geometry (Геометрия)'].append((path, file_id))
-        elif 'nesting/' in path:
-            toc_sections['Nesting (Раскрой)'].append((path, file_id))
-        elif 'visualization/' in path:
-            toc_sections['Visualization (Визуализация)'].append((path, file_id))
-        elif 'export/' in path:
-            toc_sections['Export (Экспорт)'].append((path, file_id))
-        elif 'utils/' in path:
-            toc_sections['Utils (Утилиты)'].append((path, file_id))
-        elif 'ui/' in path:
-            toc_sections['UI (Интерфейс)'].append((path, file_id))
+        if '/' not in path and '\\' not in path:
+            categories['📄 Корневые файлы'].append((path, file_id))
+        elif 'core' in path.lower():
+            categories['🎯 Core (Ядро)'].append((path, file_id))
+        elif 'parsers' in path.lower():
+            categories['📄 Parsers (Парсеры)'].append((path, file_id))
+        elif 'calculators' in path.lower():
+            categories['🧮 Calculators (Калькуляторы)'].append((path, file_id))
+        elif 'geometry' in path.lower():
+            categories['📐 Geometry (Геометрия)'].append((path, file_id))
+        elif 'nesting' in path.lower():
+            categories['🔺 Nesting (Раскрой)'].append((path, file_id))
+        elif 'visualization' in path.lower():
+            categories['🎨 Visualization (Визуализация)'].append((path, file_id))
+        elif 'export' in path.lower():
+            categories['📥 Export (Экспорт)'].append((path, file_id))
+        elif 'utils' in path.lower():
+            categories['🔧 Utils (Утилиты)'].append((path, file_id))
+        elif 'ui' in path.lower():
+            categories['💻 UI (Интерфейс)'].append((path, file_id))
     
     toc_html = ""
-    for section_name, files in toc_sections.items():
+    for section_name, files in categories.items():
         if files:
-            toc_html += f'<div class="toc-section"><h3>{section_name}</h3><ul class="toc-list">'
-            for file_path, file_id in files:
-                toc_html += f'<li><a href="#{file_id}">{file_path}</a></li>'
+            toc_html += f'<div class="toc-section"><h3>{section_name} ({len(files)})</h3><ul class="toc-list">'
+            for file_path, file_id in sorted(files):
+                toc_html += f'<li><a href="#{file_id}">📄 {file_path}</a></li>'
             toc_html += '</ul></div>'
     
     # Генерация контента файлов
     files_html = ""
+    file_counter = 0
+    
     for file_data in files_data:
         path = file_data['path']
         content = file_data['content']
         lines = file_data['lines']
         size = file_data['size']
-        file_id = path.replace('/', '_').replace('.', '_')
+        file_id = path.replace('/', '_').replace('.', '_').replace('\\', '_')
+        file_counter += 1
         
-        # Генерация нумерации строк
-        line_numbers = '\n'.join(str(i) for i in range(1, lines + 1))
+        # Определение языка
+        if path.endswith('.py'):
+            lang = 'Python'
+        elif path.endswith('.md'):
+            lang = 'Markdown'
+        elif path.endswith('.txt'):
+            lang = 'Text'
+        else:
+            lang = 'Code'
         
         # Экранирование HTML
-        content_escaped = content.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        content_escaped = escape_html(content)
         
         files_html += f"""
         <div class="file-section" id="{file_id}">
             <div class="file-header">
                 <div class="file-path">📄 {path}</div>
-                <div class="file-stats">{lines} строк | {size} байт</div>
+                <div class="file-stats">{lines} строк | {size:,} байт | {lang}</div>
             </div>
-            <div class="code-block">
-                <pre class="line-numbers">{line_numbers}</pre>
-                <pre class="code-content">{content_escaped}</pre>
+            <div class="code-container">
+                <div class="code-header">
+                    <span class="code-lang">{lang}</span>
+                    <button class="copy-btn" onclick="copyCode('{file_counter}')">📋 Копировать</button>
+                </div>
+                <div class="code-block">
+                    <pre id="code-{file_counter}">{content_escaped}</pre>
+                </div>
             </div>
         </div>
         """
-    
-    # Подсчёт модулей
-    total_modules = len([f for f in files_to_document if '__init__.py' in f])
     
     # Формирование финального HTML
     html_content = html_template.format(
         generation_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         total_files=len(files_data),
         total_lines=total_lines,
-        total_modules=total_modules,
+        python_files=python_files_count,
         file_size_kb=round(total_size / 1024, 2),
         toc_content=toc_html,
         files_content=files_html
@@ -504,16 +536,18 @@ def generate_documentation():
     with open(output_file, 'w', encoding='utf-8') as f:
         f.write(html_content)
     
-    print("=" * 80)
+    print("\n" + "=" * 80)
     print("✅ ДОКУМЕНТАЦИЯ УСПЕШНО СОЗДАНА!")
     print("=" * 80)
     print(f"\n📄 Файл: {output_file}")
     print(f"📊 Статистика:")
     print(f"   • Файлов: {len(files_data)}")
-    print(f"   • Строк кода: {total_lines}")
-    print(f"   • Модулей: {total_modules}")
+    print(f"   • Python файлов: {python_files_count}")
+    print(f"   • Строк кода: {total_lines:,}")
     print(f"   • Размер: {round(total_size / 1024, 2)} КБ")
-    print(f"\n🌐 Откройте файл в браузере для просмотра")
+    print(f"\n🌐 Откройте файл в браузере:")
+    print(f"   {os.path.abspath(output_file)}")
+    print("\n💡 Этот файл можно загрузить в ChatGPT для анализа всего проекта!")
     print("=" * 80)
 
 
