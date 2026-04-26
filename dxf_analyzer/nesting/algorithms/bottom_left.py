@@ -1,6 +1,6 @@
 """
-Bottom-Left Packing Algorithm
-General-purpose nesting for arbitrary shapes
+Алгоритм упаковки Снизу-Слева
+Универсальный раскрой для произвольных фигур
 """
 
 import logging
@@ -21,29 +21,29 @@ from ..optimization.placement_evaluator import PlacementEvaluator
 
 logger = logging.getLogger(__name__)
 
-# Constants
+# Константы
 DEFAULT_ROTATION_ANGLES = [0, 45, 90, 135, 180, 225, 270, 315]
 MAX_POSITION_CANDIDATES = 300
 
 
 class BottomLeftAlgorithm(BaseNestingAlgorithm):
     """
-    Bottom-Left Packing Algorithm
+    Алгоритм упаковки Снизу-Слева
     
-    Places parts starting from bottom-left corner,
-    trying multiple rotations for optimal fit.
+    Размещает детали начиная с левого нижнего угла,
+    пробуя множество поворотов для оптимальной посадки.
     """
     
     def __init__(self, sheet_width: float, sheet_height: float, 
                  spacing: float = 5.0, rotation_step: float = 15.0):
         """
-        Initialize Bottom-Left algorithm
+        Инициализация алгоритма Снизу-Слева
         
         Args:
-            sheet_width: Sheet width (mm)
-            sheet_height: Sheet height (mm)
-            spacing: Spacing between parts (mm)
-            rotation_step: Rotation step (degrees)
+            sheet_width: Ширина листа (мм)
+            sheet_height: Высота листа (мм)
+            spacing: Отступ между деталями (мм)
+            rotation_step: Шаг поворота (градусы)
         """
         super().__init__(sheet_width, sheet_height, spacing)
         self.rotation_step = rotation_step
@@ -54,17 +54,17 @@ class BottomLeftAlgorithm(BaseNestingAlgorithm):
     
     def optimize(self, geometry: ShapelyPolygon, quantity: int, **kwargs) -> NestingResult:
         """
-        Optimize part placement using Bottom-Left algorithm
+        Оптимизация размещения деталей алгоритмом Снизу-Слева
         
         Args:
-            geometry: Part geometry (normalized)
-            quantity: Number of parts to place
+            geometry: Геометрия детали (нормализованная)
+            quantity: Количество деталей для размещения
             
         Returns:
-            NestingResult: Optimization result
+            NestingResult: Результат оптимизации
         """
         if not SHAPELY_AVAILABLE:
-            return self._create_empty_result(quantity, "Shapely not available")
+            return self._create_empty_result(quantity, "Shapely недоступен")
         
         sheets: List[Sheet] = []
         parts_placed = 0
@@ -72,14 +72,14 @@ class BottomLeftAlgorithm(BaseNestingAlgorithm):
         for part_num in range(1, quantity + 1):
             placed = False
             
-            # Try to place on existing sheets
+            # Попытка разместить на существующих листах
             for sheet in sheets:
                 if self._try_place_on_sheet(sheet, part_num, geometry):
                     placed = True
                     parts_placed += 1
                     break
             
-            # Create new sheet if needed
+            # Создание нового листа если нужно
             if not placed:
                 new_sheet = Sheet(
                     sheet_number=len(sheets) + 1,
@@ -91,30 +91,30 @@ class BottomLeftAlgorithm(BaseNestingAlgorithm):
                     sheets.append(new_sheet)
                     parts_placed += 1
                 else:
-                    logger.warning(f"Part {part_num} cannot fit on sheet")
+                    logger.warning(f"Деталь {part_num} не помещается на лист")
                     break
         
         return self._calculate_statistics(
-            sheets, quantity, parts_placed, "Bottom-Left Packing"
+            sheets, quantity, parts_placed, "Упаковка Снизу-Слева"
         )
     
     def _try_place_on_sheet(self, sheet: Sheet, part_id: int, 
                            geometry: ShapelyPolygon) -> bool:
         """
-        Try to place part on sheet
+        Попытка разместить деталь на листе
         
         Args:
-            sheet: Target sheet
-            part_id: Part ID
-            geometry: Part geometry
+            sheet: Целевой лист
+            part_id: ID детали
+            geometry: Геометрия детали
             
         Returns:
-            bool: True if placed successfully
+            bool: True если успешно размещена
         """
         best_placement = None
         best_score = float('inf')
         
-        # Try different rotation angles
+        # Попытка разных углов поворота
         for angle in DEFAULT_ROTATION_ANGLES:
             try:
                 rotated = rotate(geometry, angle, origin='centroid')
@@ -130,15 +130,15 @@ class BottomLeftAlgorithm(BaseNestingAlgorithm):
                             best_score = score
                             best_placement = (x, y, angle, rotated)
                         
-                        # Early exit for empty sheet
+                        # Ранний выход для пустого листа
                         if not sheet.parts:
                             break
             
             except Exception as e:
-                logger.warning(f"Error trying angle {angle}: {e}")
+                logger.warning(f"Ошибка при попытке угла {angle}: {e}")
                 continue
         
-        # Place part if found valid position
+        # Размещение детали если найдена валидная позиция
         if best_placement is None:
             return False
         
@@ -147,7 +147,7 @@ class BottomLeftAlgorithm(BaseNestingAlgorithm):
         
         sheet.parts.append(PlacedPart(
             part_id=part_id,
-            part_name=f"Part #{part_id}",
+            part_name=f"Деталь #{part_id}",
             x=x, y=y,
             rotation=angle,
             geometry=placed_geom,
@@ -160,29 +160,29 @@ class BottomLeftAlgorithm(BaseNestingAlgorithm):
     
     def _can_place(self, sheet: Sheet, geometry: ShapelyPolygon) -> bool:
         """
-        Check if geometry can be placed on sheet
+        Проверка возможности размещения геометрии на листе
         
         Args:
-            sheet: Target sheet
-            geometry: Part geometry
+            sheet: Целевой лист
+            geometry: Геометрия детали
             
         Returns:
-            bool: True if can be placed
+            bool: True если можно разместить
         """
         bounds = geometry.bounds
         sp = self.spacing
         
-        # Check sheet boundaries
+        # Проверка границ листа
         if (bounds[0] < sp or bounds[1] < sp or
             bounds[2] > self.sheet_width - sp or
             bounds[3] > self.sheet_height - sp):
             return False
         
-        # Empty sheet - can place
+        # Пустой лист - можно размещать
         if not sheet.parts:
             return True
         
-        # Use spatial index if available
+        # Использование пространственного индекса если доступен
         if sheet.spatial_index is not None:
             try:
                 nearby_geoms = sheet.spatial_index.query(geometry)
@@ -191,9 +191,9 @@ class BottomLeftAlgorithm(BaseNestingAlgorithm):
                         return False
                 return True
             except Exception as e:
-                logger.warning(f"Spatial index query failed: {e}")
+                logger.warning(f"Ошибка запроса пространственного индекса: {e}")
         
-        # Fallback: check all parts
+        # Запасной вариант: проверка всех деталей
         for part in sheet.parts:
             try:
                 if geometry.distance(part.geometry) < sp - 1e-6:
@@ -204,10 +204,10 @@ class BottomLeftAlgorithm(BaseNestingAlgorithm):
         return True
     
     def _create_empty_result(self, quantity: int, error_msg: str) -> NestingResult:
-        """Create empty result"""
+        """Создание пустого результата"""
         return NestingResult(
             sheets=[], total_parts=quantity, parts_placed=0,
             parts_not_placed=quantity, total_material_used=0.0,
             total_waste=0.0, average_efficiency=0.0,
-            algorithm_used=f"Bottom-Left Failed: {error_msg}"
+            algorithm_used=f"Снизу-Слева не удалось: {error_msg}"
         )
