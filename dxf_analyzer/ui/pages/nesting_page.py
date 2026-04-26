@@ -1,5 +1,5 @@
 """
-Nesting optimization page
+Страница оптимизации раскроя
 """
 
 import streamlit as st
@@ -19,104 +19,104 @@ except ImportError:
 
 
 def render_nesting_page(objects_data):
-    """Render nesting optimization page"""
+    """Отрисовка страницы оптимизации раскроя"""
     
-    st.markdown("## 🔺 Parquet Tessellation v9.0 ULTIMATE")
-    st.markdown("**Alternating rows for maximum density**")
+    st.markdown("## 🔺 Паркетная тесселяция v9.0 ULTIMATE")
+    st.markdown("**Чередующиеся ряды для максимальной плотности**")
     st.markdown("---")
     
     if not SHAPELY_AVAILABLE:
-        st.error("❌ **shapely** library not installed.\n\nRun: `pip install shapely`")
+        st.error("❌ Библиотека **shapely** не установлена.\n\nВыполните: `pip install shapely`")
         return
     
     if not objects_data:
-        st.warning("⚠️ No data for optimization. Upload and process DXF file first.")
+        st.warning("⚠️ Нет данных для оптимизации. Загрузите и обработайте DXF файл.")
         return
     
-    st.success(f"✅ Loaded objects: **{len(objects_data)}**")
+    st.success(f"✅ Загружено объектов: **{len(objects_data)}**")
     
-    # Extract geometries
-    with st.spinner('🔍 Analyzing drawing geometry...'):
+    # Извлечение геометрии
+    with st.spinner('🔍 Анализ геометрии чертежа...'):
         geometries = extract_all_geometries(objects_data)
     
     if not geometries:
-        st.error("❌ Failed to extract geometry from any object.")
+        st.error("❌ Не удалось определить геометрию ни одного объекта.")
         return
     
-    # Display object table
+    # Отображение таблицы объектов
     _display_geometry_table(geometries)
     
     st.markdown("---")
-    st.markdown("### 🎯 Nesting Parameters")
+    st.markdown("### 🎯 Параметры раскроя")
     
-    # Object selection and parameters
+    # Выбор объекта и параметры
     selected_idx, quantity = _render_parameter_selection(geometries)
     
     selected_geom = geometries[selected_idx][1]
     selected_info = geometries[selected_idx][2]
     
-    # Part info
+    # Информация о детали
     _display_part_info(selected_info)
     
     st.markdown("---")
-    st.markdown("#### 📄 Sheet Parameters")
+    st.markdown("#### 📄 Параметры листа")
     
     sheet_width, sheet_height, spacing = _render_sheet_parameters()
     
-    # Simplification info
+    # Информация об упрощении
     if selected_info['vertices'] > 3:
-        st.info(f"💡 **Multi-vertex polygon ({selected_info['vertices']} vertices)** "
-               "will be automatically simplified to triangle.")
+        st.info(f"💡 **Многовершинный полигон ({selected_info['vertices']} вершин)** "
+               "будет автоматически упрощён до треугольника.")
     
     st.markdown("---")
     
-    # Optimize button
-    if st.button("🚀 Run v9.0 ULTIMATE", type="primary", use_container_width=True):
+    # Кнопка оптимизации
+    if st.button("🚀 Запустить раскрой v9.0 ULTIMATE", type="primary", use_container_width=True):
         _run_optimization(
             selected_geom, quantity, sheet_width, sheet_height, spacing
         )
     
-    # Display results
+    # Отображение результатов
     if 'nesting_result' in st.session_state:
         _display_nesting_results()
 
 
 def _display_geometry_table(geometries):
-    """Display geometry info table"""
+    """Отображение таблицы информации о геометрии"""
     info_data = []
     for idx, geom, info in geometries:
         info_data.append({
             '№': idx + 1,
-            'Type': info['type'],
-            'Vertices': info['vertices'],
-            'Width (mm)': f"{info['width']:.1f}",
-            'Height (mm)': f"{info['height']:.1f}",
-            'Area (mm²)': f"{info['area']:.0f}"
+            'Тип': info['type'],
+            'Вершин': info['vertices'],
+            'Ширина (мм)': f"{info['width']:.1f}",
+            'Высота (мм)': f"{info['height']:.1f}",
+            'Площадь (мм²)': f"{info['area']:.0f}"
         })
     
-    st.markdown("### 📐 Available Objects")
+    st.markdown("### 📐 Доступные объекты")
     st.dataframe(pd.DataFrame(info_data), use_container_width=True, hide_index=True)
 
 
 def _render_parameter_selection(geometries):
-    """Render parameter selection controls"""
+    """Отрисовка элементов выбора параметров"""
     col_select, col_qty = st.columns([2, 1])
     
     with col_select:
         selected_idx = st.selectbox(
-            "Select object for nesting:",
+            "Выберите объект для раскроя:",
             options=range(len(geometries)),
             format_func=lambda i: (
-                f"Object #{geometries[i][0] + 1} — "
+                f"Объект #{geometries[i][0] + 1} — "
                 f"{geometries[i][2]['type']} "
-                f"({geometries[i][2]['width']:.1f}×{geometries[i][2]['height']:.1f} mm, "
-                f"{geometries[i][2]['vertices']} vertices)"
+                f"({geometries[i][2]['width']:.1f}×{geometries[i][2]['height']:.1f} мм, "
+                f"{geometries[i][2]['vertices']} вершин)"
             )
         )
     
     with col_qty:
         quantity = st.number_input(
-            "Part quantity",
+            "Количество деталей",
             value=50,
             min_value=1,
             max_value=1000,
@@ -127,27 +127,27 @@ def _render_parameter_selection(geometries):
 
 
 def _display_part_info(selected_info):
-    """Display selected part info"""
-    st.markdown("#### 📏 Part Parameters")
+    """Отображение информации о выбранной детали"""
+    st.markdown("#### 📏 Параметры детали")
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.metric("Type", selected_info['type'].title())
+        st.metric("Тип", selected_info['type'].title())
     with col2:
-        st.metric("Width", f"{selected_info['width']:.2f} mm")
+        st.metric("Ширина", f"{selected_info['width']:.2f} мм")
     with col3:
-        st.metric("Height", f"{selected_info['height']:.2f} mm")
+        st.metric("Высота", f"{selected_info['height']:.2f} мм")
     with col4:
-        st.metric("Area", f"{selected_info['area']/1e6:.4f} m²")
+        st.metric("Площадь", f"{selected_info['area']/1e6:.4f} м²")
 
 
 def _render_sheet_parameters():
-    """Render sheet parameter controls"""
+    """Отрисовка элементов управления параметрами листа"""
     col1, col2, col3 = st.columns(3)
     
     with col1:
         sheet_width = st.number_input(
-            "Sheet width (mm)",
+            "Ширина листа (мм)",
             value=2000.0,
             step=100.0,
             min_value=100.0
@@ -155,7 +155,7 @@ def _render_sheet_parameters():
     
     with col2:
         sheet_height = st.number_input(
-            "Sheet height (mm)",
+            "Высота листа (мм)",
             value=1500.0,
             step=100.0,
             min_value=100.0
@@ -163,7 +163,7 @@ def _render_sheet_parameters():
     
     with col3:
         spacing = st.number_input(
-            "Part spacing (mm)",
+            "Отступ между деталями (мм)",
             value=3.0,
             min_value=0.0,
             max_value=50.0,
@@ -174,11 +174,11 @@ def _render_sheet_parameters():
 
 
 def _run_optimization(selected_geom, quantity, sheet_width, sheet_height, spacing):
-    """Run nesting optimization"""
+    """Запуск оптимизации раскроя"""
     import io
     import sys
     
-    with st.expander("📋 Optimization Logs", expanded=False):
+    with st.expander("📋 Логи оптимизации", expanded=False):
         old_stdout = sys.stdout
         sys.stdout = buffer = io.StringIO()
         
@@ -193,72 +193,72 @@ def _run_optimization(selected_geom, quantity, sheet_width, sheet_height, spacin
             st.session_state['nesting_result'] = result
             st.session_state['nesting_geometry'] = selected_geom
             
-            st.success("✅ Optimization completed!")
+            st.success("✅ Оптимизация завершена!")
             st.balloons()
         
         except Exception as e:
             sys.stdout = old_stdout
-            st.error(f"❌ Error: {e}")
+            st.error(f"❌ Ошибка: {e}")
             import traceback
             st.code(traceback.format_exc())
 
 
 def _display_nesting_results():
-    """Display nesting optimization results"""
+    """Отображение результатов оптимизации раскроя"""
     result = st.session_state['nesting_result']
     
     st.markdown("---")
-    st.markdown("### 📊 Results")
+    st.markdown("### 📊 Результаты")
     
-    # Metrics
+    # Метрики
     col1, col2, col3, col4, col5 = st.columns(5)
     
     with col1:
-        st.metric("📄 Sheets", len(result.sheets))
+        st.metric("📄 Листов", len(result.sheets))
     
     with col2:
         placement_rate = (result.parts_placed / result.total_parts * 100 
                          if result.total_parts > 0 else 0)
         st.metric(
-            "✅ Placed",
+            "✅ Размещено",
             f"{result.parts_placed}/{result.total_parts}",
             delta=f"{placement_rate:.0f}%"
         )
     
     with col3:
         st.metric(
-            "❌ Not Placed",
+            "❌ Не поместилось",
             result.parts_not_placed,
-            delta="Problem!" if result.parts_not_placed > 0 else None,
+            delta="Проблема!" if result.parts_not_placed > 0 else None,
             delta_color="inverse"
         )
     
     with col4:
-        st.metric("📈 Efficiency", f"{result.average_efficiency:.1f}%")
+        st.metric("📈 Эффективность", f"{result.average_efficiency:.1f}%")
     
     with col5:
-        st.metric("♻️ Waste", f"{result.total_waste/1e6:.2f} m²")
+        st.metric("♻️ Отходы", f"{result.total_waste/1e6:.2f} м²")
     
-    st.info(f"**Algorithm:** {result.algorithm_used}")
+    st.info(f"**Алгоритм:** {result.algorithm_used}")
     
     if result.parts_not_placed > 0:
-        st.warning(f"⚠️ **{result.parts_not_placed}** parts did not fit!")
+        st.warning(f"⚠️ **{result.parts_not_placed}** деталей не поместились!")
     
-    # Visualization
+    # Визуализация
     if result.sheets and result.parts_placed > 0:
         _render_sheet_visualizations(result)
 
 
 def _render_sheet_visualizations(result):
-    """Render sheet visualizations"""
+    """Отрисовка визуализации листов"""
     st.markdown("---")
-    st.markdown("### 🎨 Visualization")
+    st.markdown("### 🎨 Визуализация")
     
     col_viz1, col_viz2 = st.columns([1, 3])
     
     with col_viz1:
-        show_all = st.checkbox("Show all sheets", value=False)
-        show_labels = st.checkbox("Show numbers", value=True)
+        show_all = st.checkbox("Показать все листы", value=False)
+        show_labels = st.checkbox("Показать номера", value=True)
     
     sheets_to_show = result.sheets if show_all else result.sheets[:3]
     
@@ -266,38 +266,38 @@ def _render_sheet_visualizations(result):
         _render_single_sheet(sheet, show_labels)
     
     if len(result.sheets) > 3 and not show_all:
-        st.info(f"ℹ️ Showing 3 of {len(result.sheets)} sheets.")
+        st.info(f"ℹ️ Показано 3 из {len(result.sheets)} листов.")
 
 
 def _render_single_sheet(sheet, show_labels):
-    """Render single sheet visualization"""
-    with st.expander(f"📄 Sheet #{sheet.sheet_number}", expanded=(sheet.sheet_number == 1)):
+    """Отрисовка одного листа"""
+    with st.expander(f"📄 Лист #{sheet.sheet_number}", expanded=(sheet.sheet_number == 1)):
         
-        # Sheet metrics
+        # Метрики листа
         col_s1, col_s2, col_s3, col_s4 = st.columns(4)
         
         with col_s1:
-            st.metric("Parts", len(sheet.parts))
+            st.metric("Деталей", len(sheet.parts))
         with col_s2:
-            st.metric("Used", f"{sheet.used_area/1e6:.3f} m²")
+            st.metric("Использовано", f"{sheet.used_area/1e6:.3f} м²")
         with col_s3:
-            st.metric("Waste", f"{sheet.waste_area/1e6:.3f} m²")
+            st.metric("Отходы", f"{sheet.waste_area/1e6:.3f} м²")
         with col_s4:
-            st.metric("Efficiency", f"{sheet.efficiency:.1f}%")
+            st.metric("Эффективность", f"{sheet.efficiency:.1f}%")
         
-        # Visualization
+        # Визуализация
         fig, ax = plt.subplots(figsize=(18, 10))
         fig.patch.set_facecolor('#FFFFFF')
         ax.set_facecolor('#F5F5F5')
         
-        # Sheet boundary
+        # Граница листа
         sheet_boundary = MplPolygon(
             [(0, 0), (sheet.width, 0), (sheet.width, sheet.height), (0, sheet.height)],
             fill=False, edgecolor='red', linewidth=3, linestyle='--'
         )
         ax.add_patch(sheet_boundary)
         
-        # Parts
+        # Детали
         if sheet.parts:
             num_parts = len(sheet.parts)
             colors = _generate_part_colors(num_parts)
@@ -336,7 +336,7 @@ def _render_single_sheet(sheet, show_labels):
                                 zorder=3
                             )
                 except Exception as e:
-                    st.warning(f"⚠️ Error drawing part #{part.part_id}: {e}")
+                    st.warning(f"⚠️ Ошибка отрисовки детали #{part.part_id}: {e}")
                     continue
         
         ax.set_xlim(-50, sheet.width + 50)
@@ -344,30 +344,4 @@ def _render_single_sheet(sheet, show_labels):
         ax.set_aspect('equal')
         ax.grid(True, alpha=0.3, linestyle=':', linewidth=0.5, zorder=0)
         ax.set_title(
-            f"Sheet #{sheet.sheet_number} — {len(sheet.parts)} parts — "
-            f"{sheet.efficiency:.1f}%",
-            fontsize=16, fontweight='bold', pad=20
-        )
-        ax.set_xlabel("X (mm)", fontsize=12)
-        ax.set_ylabel("Y (mm)", fontsize=12)
-        
-        plt.tight_layout()
-        st.pyplot(fig, use_container_width=True)
-        plt.close(fig)
-
-
-def _generate_part_colors(num_parts):
-    """Generate colors for parts"""
-    if num_parts <= 20:
-        colors = plt.cm.tab20(np.linspace(0, 1, 20))
-    elif num_parts <= 40:
-        colors1 = plt.cm.tab20(np.linspace(0, 1, 20))
-        colors2 = plt.cm.tab20b(np.linspace(0, 1, 20))
-        colors = np.vstack([colors1, colors2])
-    else:
-        colors1 = plt.cm.tab20(np.linspace(0, 1, 20))
-        colors2 = plt.cm.tab20b(np.linspace(0, 1, 20))
-        colors3 = plt.cm.tab20c(np.linspace(0, 1, 20))
-        colors = np.vstack([colors1, colors2, colors3])
-    
-    return colors
+            f"Лист #{sheet.sheet_number} 
