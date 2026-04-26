@@ -1,5 +1,5 @@
 """
-Convert DXF entities to Shapely polygons
+Конвертация DXF объектов в Shapely полигоны
 """
 
 import math
@@ -22,13 +22,13 @@ MIN_COORDINATE_DIFF = 1e-6
 
 def dxf_object_to_shapely(dxf_obj: Any) -> Optional[ShapelyPolygon]:
     """
-    Convert DXF object to Shapely Polygon
+    Конвертация DXF объекта в Shapely Polygon
     
     Args:
-        dxf_obj: DXF object (from DXFObject or raw entity)
+        dxf_obj: DXF объект (из DXFObject или сырой entity)
         
     Returns:
-        Optional[ShapelyPolygon]: Shapely polygon or None
+        Optional[ShapelyPolygon]: Shapely полигон или None
     """
     if not SHAPELY_AVAILABLE or dxf_obj is None:
         return None
@@ -36,7 +36,7 @@ def dxf_object_to_shapely(dxf_obj: Any) -> Optional[ShapelyPolygon]:
     vertices = []
     
     try:
-        # Get entity
+        # Получение entity
         entity = getattr(dxf_obj, 'entity', dxf_obj)
         entity_type = None
         
@@ -46,27 +46,27 @@ def dxf_object_to_shapely(dxf_obj: Any) -> Optional[ShapelyPolygon]:
             except:
                 pass
         
-        # Extract vertices based on type
+        # Извлечение вершин по типу
         if entity_type == 'POLYLINE' or (hasattr(entity, 'vertices') and entity_type != 'LWPOLYLINE'):
             vertices = _extract_polyline_vertices(entity)
         
         elif entity_type == 'LWPOLYLINE' or hasattr(entity, 'get_points'):
             vertices = _extract_lwpolyline_vertices(entity)
         
-        # Validate vertices
+        # Валидация вершин
         if len(vertices) < 3:
             return None
         
-        # Remove duplicate consecutive vertices
+        # Удаление дубликатов последовательных вершин
         vertices = _remove_duplicates(vertices)
         
         if len(vertices) < 3:
             return None
         
-        # Create polygon
+        # Создание полигона
         poly = ShapelyPolygon(vertices)
         
-        # Validate and fix
+        # Валидация и исправление
         if not poly.is_valid:
             try:
                 poly = make_valid(poly)
@@ -75,7 +75,7 @@ def dxf_object_to_shapely(dxf_obj: Any) -> Optional[ShapelyPolygon]:
             except:
                 poly = poly.buffer(0)
         
-        # Final check
+        # Финальная проверка
         if not poly.is_valid or poly.is_empty:
             try:
                 multi_point = MultiPoint(vertices)
@@ -89,12 +89,12 @@ def dxf_object_to_shapely(dxf_obj: Any) -> Optional[ShapelyPolygon]:
         return None
     
     except Exception as e:
-        logger.error(f"Error converting DXF to Shapely: {e}")
+        logger.error(f"Ошибка конвертации DXF в Shapely: {e}")
         return None
 
 
 def _extract_polyline_vertices(entity) -> List[Tuple[float, float]]:
-    """Extract vertices from POLYLINE"""
+    """Извлечение вершин из POLYLINE"""
     vertices = []
     
     try:
@@ -131,13 +131,13 @@ def _extract_polyline_vertices(entity) -> List[Tuple[float, float]]:
                 vertices.append((x, y))
     
     except Exception as e:
-        logger.warning(f"Error extracting POLYLINE vertices: {e}")
+        logger.warning(f"Ошибка извлечения вершин POLYLINE: {e}")
     
     return vertices
 
 
 def _extract_lwpolyline_vertices(entity) -> List[Tuple[float, float]]:
-    """Extract vertices from LWPOLYLINE"""
+    """Извлечение вершин из LWPOLYLINE"""
     vertices = []
     
     try:
@@ -158,13 +158,13 @@ def _extract_lwpolyline_vertices(entity) -> List[Tuple[float, float]]:
                     continue
     
     except Exception as e:
-        logger.warning(f"Error extracting LWPOLYLINE vertices: {e}")
+        logger.warning(f"Ошибка извлечения вершин LWPOLYLINE: {e}")
     
     return vertices
 
 
 def _remove_duplicates(vertices: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
-    """Remove duplicate consecutive vertices"""
+    """Удаление дубликатов последовательных вершин"""
     unique_vertices = []
     
     for v in vertices:
@@ -176,7 +176,7 @@ def _remove_duplicates(vertices: List[Tuple[float, float]]) -> List[Tuple[float,
             if distance > MIN_COORDINATE_DIFF:
                 unique_vertices.append(v)
     
-    # Check if first and last are same
+    # Проверка если первая и последняя одинаковые
     if len(unique_vertices) >= 3:
         first = unique_vertices[0]
         last = unique_vertices[-1]
@@ -189,13 +189,13 @@ def _remove_duplicates(vertices: List[Tuple[float, float]]) -> List[Tuple[float,
 
 def extract_all_geometries(objects_data: List[Any]) -> List[Tuple[int, ShapelyPolygon, Dict[str, Any]]]:
     """
-    Extract all valid geometries from DXF objects list
+    Извлечение всех валидных геометрий из списка DXF объектов
     
     Args:
-        objects_data: List of DXF objects
+        objects_data: Список DXF объектов
         
     Returns:
-        List[Tuple]: [(index, geometry, info), ...]
+        List[Tuple]: [(индекс, геометрия, info), ...]
     """
     geometries = []
     
@@ -224,16 +224,16 @@ def extract_all_geometries(objects_data: List[Any]) -> List[Tuple[int, ShapelyPo
                 geometries.append((i, geom, info))
         
         except Exception as e:
-            logger.warning(f"Failed to extract geometry from object {i}: {e}")
+            logger.warning(f"Не удалось извлечь геометрию из объекта {i}: {e}")
             continue
     
     return geometries
 
 
 def _get_polygon_type(geom: ShapelyPolygon) -> str:
-    """Determine polygon type"""
+    """Определение типа полигона"""
     if not SHAPELY_AVAILABLE or geom is None or geom.is_empty:
-        return "unknown"
+        return "неизвестный"
     
     try:
         coords = list(geom.exterior.coords)[:-1]
