@@ -1,5 +1,5 @@
 """
-Error reporting component
+Компонент отображения ошибок
 """
 
 import streamlit as st
@@ -10,52 +10,52 @@ from ...core.errors import ErrorCollector
 
 def show_error_report(collector: ErrorCollector):
     """
-    Display error and warning report
+    Отображение отчёта об ошибках и предупреждениях
     
     Args:
-        collector: Error collector
+        collector: Коллектор ошибок
     """
-    # Info messages
+    # Информационные сообщения
     if collector.info:
-        with st.expander(f"ℹ️ Information ({len(collector.info)})", expanded=False):
+        with st.expander(f"ℹ️ Информация ({len(collector.info)})", expanded=False):
             for record in collector.info:
                 st.info(f"**{record.entity_type}**: {record.message}")
     
-    # Errors
+    # Ошибки
     if collector.has_errors:
-        with st.expander(f"🔴 Errors ({len(collector.errors)})", expanded=True):
+        with st.expander(f"🔴 Ошибки ({len(collector.errors)})", expanded=True):
             error_data = [
                 {
-                    'Number': rec.entity_num,
-                    'Type': rec.entity_type,
-                    'Error': rec.message,
-                    'Class': rec.error_type
+                    'Номер': rec.entity_num,
+                    'Тип': rec.entity_type,
+                    'Ошибка': rec.message,
+                    'Класс': rec.error_type
                 }
                 for rec in collector.errors
             ]
             st.dataframe(pd.DataFrame(error_data), use_container_width=True, hide_index=True)
     
-    # Warnings
+    # Предупреждения
     if collector.has_warnings:
-        with st.expander(f"⚠️ Warnings ({len(collector.warnings)})", expanded=False):
+        with st.expander(f"⚠️ Предупреждения ({len(collector.warnings)})", expanded=False):
             warning_data = [
                 {
-                    'Number': rec.entity_num,
-                    'Type': rec.entity_type,
-                    'Warning': rec.message
+                    'Номер': rec.entity_num,
+                    'Тип': rec.entity_type,
+                    'Предупреждение': rec.message
                 }
                 for rec in collector.warnings
             ]
             st.dataframe(pd.DataFrame(warning_data), use_container_width=True, hide_index=True)
     
-    # Skipped
+    # Пропущенные
     if collector.skipped:
-        with st.expander(f"⏭️ Skipped ({len(collector.skipped)})", expanded=False):
+        with st.expander(f"⏭️ Пропущено ({len(collector.skipped)})", expanded=False):
             skipped_data = [
                 {
-                    'Number': rec.entity_num,
-                    'Type': rec.entity_type,
-                    'Reason': rec.message
+                    'Номер': rec.entity_num,
+                    'Тип': rec.entity_type,
+                    'Причина': rec.message
                 }
                 for rec in collector.skipped
             ]
