@@ -85,9 +85,16 @@ def _display_geometry_table(geometries):
     """Отображение таблицы информации о геометрии"""
     info_data = []
     for idx, geom, info in geometries:
+        type_names = {
+            'triangle': 'треугольник',
+            'rectangle': 'прямоугольник',
+            'quadrilateral': 'четырёхугольник',
+            'polygon': 'многоугольник',
+            'unknown': 'неизвестный'
+        }
         info_data.append({
             '№': idx + 1,
-            'Тип': info['type'],
+            'Тип': type_names.get(info['type'], info['type']),
             'Вершин': info['vertices'],
             'Ширина (мм)': f"{info['width']:.1f}",
             'Высота (мм)': f"{info['height']:.1f}",
@@ -102,13 +109,21 @@ def _render_parameter_selection(geometries):
     """Отрисовка элементов выбора параметров"""
     col_select, col_qty = st.columns([2, 1])
     
+    type_names = {
+        'triangle': 'треугольник',
+        'rectangle': 'прямоугольник',
+        'quadrilateral': 'четырёхугольник',
+        'polygon': 'многоугольник',
+        'unknown': 'неизвестный'
+    }
+    
     with col_select:
         selected_idx = st.selectbox(
             "Выберите объект для раскроя:",
             options=range(len(geometries)),
             format_func=lambda i: (
                 f"Объект #{geometries[i][0] + 1} — "
-                f"{geometries[i][2]['type']} "
+                f"{type_names.get(geometries[i][2]['type'], geometries[i][2]['type'])} "
                 f"({geometries[i][2]['width']:.1f}×{geometries[i][2]['height']:.1f} мм, "
                 f"{geometries[i][2]['vertices']} вершин)"
             )
@@ -131,8 +146,16 @@ def _display_part_info(selected_info):
     st.markdown("#### 📏 Параметры детали")
     col1, col2, col3, col4 = st.columns(4)
     
+    type_names = {
+        'triangle': 'Треугольник',
+        'rectangle': 'Прямоугольник',
+        'quadrilateral': 'Четырёхугольник',
+        'polygon': 'Многоугольник',
+        'unknown': 'Неизвестный'
+    }
+    
     with col1:
-        st.metric("Тип", selected_info['type'].title())
+        st.metric("Тип", type_names.get(selected_info['type'], selected_info['type']))
     with col2:
         st.metric("Ширина", f"{selected_info['width']:.2f} мм")
     with col3:
@@ -344,4 +367,40 @@ def _render_single_sheet(sheet, show_labels):
         ax.set_aspect('equal')
         ax.grid(True, alpha=0.3, linestyle=':', linewidth=0.5, zorder=0)
         ax.set_title(
-            f"Лист #{sheet.sheet_number} 
+            f"Лист #{sheet.sheet_number} — {len(sheet.parts)} деталей — "
+            f"{sheet.efficiency:.1f}%",
+            fontsize=16, fontweight='bold', pad=20
+        )
+        ax.set_xlabel("X (мм)", fontsize=12)
+        ax.set_ylabel("Y (мм)", fontsize=12)
+        
+        # Легенда
+        from matplotlib.patches import Patch
+        legend_elements = [
+            Patch(facecolor='lightblue', alpha=0.75,
+                  edgecolor='#003366', label=f'Детали ({len(sheet.parts)} шт)'),
+            Patch(facecolor='none', edgecolor='red',
+                  linestyle='--', linewidth=2, label='Границы листа')
+        ]
+        ax.legend(handles=legend_elements, loc='upper right', fontsize=12)
+        
+        plt.tight_layout()
+        st.pyplot(fig, use_container_width=True)
+        plt.close(fig)
+
+
+def _generate_part_colors(num_parts):
+    """Генерация цветов для деталей"""
+    if num_parts <= 20:
+        colors = plt.cm.tab20(np.linspace(0, 1, 20))
+    elif num_parts <= 40:
+        colors1 = plt.cm.tab20(np.linspace(0, 1, 20))
+        colors2 = plt.cm.tab20b(np.linspace(0, 1, 20))
+        colors = np.vstack([colors1, colors2])
+    else:
+        colors1 = plt.cm.tab20(np.linspace(0, 1, 20))
+        colors2 = plt.cm.tab20b(np.linspace(0, 1, 20))
+        colors3 = plt.cm.tab20c(np.linspace(0, 1, 20))
+        colors = np.vstack([colors1, colors2, colors3])
+    
+    return colors
