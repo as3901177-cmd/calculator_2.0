@@ -401,3 +401,73 @@ def show_testing_page():
 
 if __name__ == "__main__":
     show_testing_page()
+    # После блока с метриками добавьте:
+
+# График результатов
+st.markdown("---")
+st.subheader("📈 Визуализация результатов")
+
+import pandas as pd
+import plotly.graph_objects as go
+
+# Создаём DataFrame
+df_results = pd.DataFrame([
+    {
+        'ID': r.test_id,
+        'Название': r.name,
+        'Ожидаемо': r.expected,
+        'Получено': r.actual if r.actual else 0,
+        'Разница': r.difference if r.actual else 0,
+        'Статус': 'Пройдено' if r.passed else ('Ошибка' if r.error else 'Провал')
+    }
+    for r in results
+])
+
+# График сравнения
+fig = go.Figure()
+
+fig.add_trace(go.Bar(
+    name='Ожидаемо',
+    x=df_results['Название'],
+    y=df_results['Ожидаемо'],
+    marker_color='lightblue'
+))
+
+fig.add_trace(go.Bar(
+    name='Получено',
+    x=df_results['Название'],
+    y=df_results['Получено'],
+    marker_color='lightgreen'
+))
+
+fig.update_layout(
+    title='Сравнение ожидаемых и фактических значений',
+    xaxis_title='Тестовые фигуры',
+    yaxis_title='Длина реза (мм)',
+    barmode='group',
+    height=500
+)
+
+st.plotly_chart(fig, use_container_width=True)
+
+# График отклонений
+fig2 = go.Figure()
+
+colors = ['green' if r.passed else 'red' for r in results]
+
+fig2.add_trace(go.Bar(
+    x=df_results['Название'],
+    y=df_results['Разница'],
+    marker_color=colors,
+    text=df_results['Разница'].round(2),
+    textposition='auto',
+))
+
+fig2.update_layout(
+    title='Абсолютные отклонения от эталона',
+    xaxis_title='Тестовые фигуры',
+    yaxis_title='Отклонение (мм)',
+    height=400
+)
+
+st.plotly_chart(fig2, use_container_width=True)
