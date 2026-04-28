@@ -61,3 +61,58 @@ elif st.session_state.current_page == "Документация":
         if st.button("🏠 Вернуться на главную"):
             st.session_state.current_page = "Главная"
             st.rerun()
+
+
+# Импорт страниц
+from dxf_analyzer.ui.pages.main_page import show_main_page
+from dxf_analyzer.ui.pages.nesting_page import show_nesting_page
+from dxf_analyzer.ui.pages.docs_page import show_docs_page
+from dxf_analyzer.ui.pages.testing_page import show_testing_page  # НОВОЕ
+
+
+def main():
+    """Главная функция приложения"""
+    
+    st.set_page_config(
+        page_title="DXF Analyzer",
+        page_icon="📐",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
+    
+    # Боковое меню
+    with st.sidebar:
+        st.title("📐 DXF Analyzer")
+        st.markdown("---")
+        
+        page = st.radio(
+            "Навигация",
+            [
+                "🏠 Главная",
+                "📦 Раскрой деталей",
+                "📚 Документация",
+                "🧪 Тестирование"  # НОВОЕ
+            ]
+        )
+        
+        st.markdown("---")
+        st.markdown("### ℹ️ О приложении")
+        st.markdown("""
+        **Версия:** 2.0.0  
+        **Автор:** Ваше имя  
+        **Лицензия:** MIT
+        """)
+    
+    # Отображение выбранной страницы
+    if page == "🏠 Главная":
+        show_main_page()
+    elif page == "📦 Раскрой деталей":
+        show_nesting_page()
+    elif page == "📚 Документация":
+        show_docs_page()
+    elif page == "🧪 Тестирование":  # НОВОЕ
+        show_testing_page()
+
+
+if __name__ == "__main__":
+    main()
