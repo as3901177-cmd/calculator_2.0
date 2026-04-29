@@ -8,34 +8,53 @@ import json
 import time
 from pathlib import Path
 import sys
+import ezdxf
 
 # Добавляем корневую директорию в PATH
 project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from dxf_analyzer.parsers.dxf_reader import read_dxf_file
-from dxf_analyzer.parsers.entity_extractor import extract_entities
-from dxf_analyzer.core.errors import ErrorCollector
+from dxf_analyzer.calculators.line_calculator import LineCalculator
+from dxf_analyzer.calculators.arc_calculator import ArcCalculator
+from dxf_analyzer.calculators.circle_calculator import CircleCalculator
+from dxf_analyzer.calculators.polyline_calculator import PolylineCalculator, LWPolylineCalculator
+from dxf_analyzer.calculators.spline_calculator import SplineCalculator
+from dxf_analyzer.calculators.ellipse_calculator import EllipseCalculator
+
+
+# Маппинг типов сущностей к калькуляторам
+CALCULATORS = {
+    'LINE': LineCalculator(),
+    'ARC': ArcCalculator(),
+    'CIRCLE': CircleCalculator(),
+    'POLYLINE': PolylineCalculator(),
+    'LWPOLYLINE': LWPolylineCalculator(),
+    'SPLINE': SplineCalculator(),
+    'ELLIPSE': EllipseCalculator(),
+}
 
 
 def calculate_cut_length(file_path: str) -> float:
-    """Функция расчёта длины реза"""
+    """Функция расчёта длины реза напрямую через ezdxf"""
     try:
-        # Открываем файл как бинарный
-        with open(file_path, 'rb') as f:
-            file_buffer = type('obj', (object,), {'getbuffer': lambda: f.read(), 'name': file_path})()
+        doc = ezdxf.readfile(file_path)
+        msp = doc.modelspace()
         
-        collector = ErrorCollector()
-        doc, temp_path = read_dxf_file(file_buffer, collector)
+        total_length = 0.0
         
-        if doc is None:
-            raise Exception("Не удалось прочитать DXF файл")
-        
-        objects_data = extract_entities(doc, collector)
-        
-        total_length = sum(obj.length for obj in objects_data)
+        for entity in msp:
+            entity_type = entity.dxftype()
+            if entity_type in CALCULATORS:
+                try:
+                    length = CALCULATORS[entity_type].calculate(entity)
+                    if length > 0:
+                        total_length += length
+                except Exception as e:
+                    print(f"Ошибка расчёта {entity_type}: {e}")
+                    continue
         
         return total_length
+        
     except Exception as e:
         raise Exception(f"Ошибка расчёта: {str(e)}")
 
@@ -63,7 +82,6 @@ def run_tests():
         start_time = time.time()
         
         if not file_path.exists():
-            # Создаём словарь вместо объекта класса
             results.append({
                 'test_id': test_case['id'],
                 'name': test_case['name'],
@@ -79,12 +97,10 @@ def run_tests():
             continue
         
         try:
-            # Расчёт длины
             actual = calculate_cut_length(str(file_path))
             expected = test_case['expected_length']
             tolerance = test_case['tolerance']
             
-            # Проверка
             diff = abs(actual - expected)
             passed = diff <= tolerance
             
@@ -161,11 +177,8 @@ def show_testing_page():
                 from tests.generate_test_fixtures import TestFixturesGenerator
                 from tests.create_expected_results import create_expected_results
                 
-                # Генерация фикстур
                 generator = TestFixturesGenerator()
                 generator.create_all_fixtures()
-                
-                # Создание эталонных данных
                 create_expected_results()
                 
                 st.success("✅ Тестовые файлы успешно созданы!")
@@ -186,7 +199,6 @@ def show_testing_page():
             st.error(f"❌ {error}")
             return
         
-        # Сохраняем результаты в session_state
         st.session_state.test_results = results
         status_text.text("✅ Тесты завершены!")
     
@@ -194,13 +206,11 @@ def show_testing_page():
     if 'test_results' in st.session_state:
         results = st.session_state.test_results
         
-        # Статистика
         passed = sum(1 for r in results if r['passed'])
         failed = sum(1 for r in results if not r['passed'] and not r['error'])
         errors = sum(1 for r in results if r['error'])
         total = len(results)
         
-        # Метрики
         st.markdown("---")
         st.subheader("📊 Итоговая статистика")
         
@@ -208,17 +218,13 @@ def show_testing_page():
         
         with col1:
             st.metric("Всего тестов", total)
-        
         with col2:
             st.metric("Пройдено", passed, delta=f"{passed/total*100:.1f}%")
-        
         with col3:
-            st.metric("Провалено", failed, delta=f"-{failed/total*100:.1f}%" if failed > 0 else "0%")
-        
+            st.metric("Провалено", failed)
         with col4:
             st.metric("Ошибки", errors)
         
-        # Прогресс-бар
         progress_percent = passed / total if total > 0 else 0
         st.progress(progress_percent)
         
@@ -233,56 +239,18 @@ def show_testing_page():
         st.markdown("---")
         st.subheader("📋 Детальные результаты")
         
-        # Фильтры
-        filter_col1, filter_col2 = st.columns(2)
-        
-        with filter_col1:
-            show_filter = st.selectbox(
-                "Показать:",
-                ["Все тесты", "Только пройденные", "Только провалы", "Только ошибки"]
-            )
-        
-        with filter_col2:
-            sort_by = st.selectbox(
-                "Сортировка:",
-                ["По ID", "По разнице", "По статусу"]
-            )
-        
-        # Фильтрация
-        filtered_results = results.copy()
-        
-        if show_filter == "Только пройденные":
-            filtered_results = [r for r in results if r['passed']]
-        elif show_filter == "Только провалы":
-            filtered_results = [r for r in results if not r['passed'] and not r['error']]
-        elif show_filter == "Только ошибки":
-            filtered_results = [r for r in results if r['error']]
-        
-        # Сортировка
-        if sort_by == "По разнице":
-            filtered_results.sort(key=lambda r: r['difference'] if r['actual'] else float('inf'), reverse=True)
-        elif sort_by == "По статусу":
-            filtered_results.sort(key=lambda r: (not r['passed'], r['error'] is not None))
-        else:
-            filtered_results.sort(key=lambda r: r['test_id'])
-        
-        # Таблица результатов
-        for result in filtered_results:
-            # Цвет карточки
+        for result in results:
             if result['error']:
                 card_color = "#fff3cd"
                 icon = "⚠️"
-                status_text_disp = "ERROR"
                 border_color = "#856404"
             elif result['passed']:
                 card_color = "#d4edda"
                 icon = "✅"
-                status_text_disp = "PASS"
                 border_color = "#28a745"
             else:
                 card_color = "#f8d7da"
                 icon = "❌"
-                status_text_disp = "FAIL"
                 border_color = "#dc3545"
             
             with st.container():
@@ -302,16 +270,13 @@ def show_testing_page():
                 
                 with col1:
                     st.write(f"**Файл:** `{result['file']}`")
-                
                 with col2:
                     st.write(f"**Ожидаемо:** {result['expected']:.2f} мм")
-                
                 with col3:
                     if result['actual'] is not None:
                         st.write(f"**Получено:** {result['actual']:.2f} мм")
                     else:
                         st.write(f"**Получено:** N/A")
-                
                 with col4:
                     if result['actual'] is not None:
                         diff_color = "green" if result['passed'] else "red"
@@ -319,135 +284,34 @@ def show_testing_page():
                     else:
                         st.write(f"**Разница:** N/A")
                 
-                # Детали ошибки
                 if result['error']:
                     with st.expander("🔍 Детали ошибки"):
                         st.code(result['error'], language="text")
                 
-                # Процент отклонения
-                if result['actual'] is not None and result['expected'] > 0:
-                    percent_diff = (result['difference'] / result['expected']) * 100
-                    
-                    if not result['passed']:
-                        with st.expander("📈 Анализ отклонения"):
-                            st.write(f"**Процент отклонения:** {percent_diff:.2f}%")
-                            st.write(f"**Допустимый допуск:** {result['tolerance']:.2f} мм")
-                            st.write(f"**Превышение допуска:** {result['difference'] - result['tolerance']:.2f} мм")
-                
                 st.markdown("---")
         
-        # Экспорт результатов
+        # Экспорт
         st.markdown("---")
         st.subheader("💾 Экспорт результатов")
         
-        col1, col2 = st.columns(2)
+        json_data = {
+            "summary": {
+                "total": total,
+                "passed": passed,
+                "failed": failed,
+                "errors": errors,
+                "success_rate": f"{passed/total*100:.1f}%"
+            },
+            "results": results
+        }
         
-        with col1:
-            # JSON экспорт
-            json_data = {
-                "summary": {
-                    "total": total,
-                    "passed": passed,
-                    "failed": failed,
-                    "errors": errors,
-                    "success_rate": f"{passed/total*100:.1f}%"
-                },
-                "results": results
-            }
-            
-            st.download_button(
-                label="📥 Скачать JSON",
-                data=json.dumps(json_data, indent=2, ensure_ascii=False),
-                file_name=f"test_results_{time.strftime('%Y%m%d_%H%M%S')}.json",
-                mime="application/json",
-                use_container_width=True
-            )
-        
-        with col2:
-            # CSV экспорт
-            import pandas as pd
-            df = pd.DataFrame(results)
-            csv_data = df.to_csv(index=False, encoding='utf-8-sig')
-            st.download_button(
-                label="📥 Скачать CSV",
-                data=csv_data,
-                file_name=f"test_results_{time.strftime('%Y%m%d_%H%M%S')}.csv",
-                mime="text/csv",
-                use_container_width=True
-            )
-        
-        # Визуализация результатов
-        st.markdown("---")
-        st.subheader("📈 Визуализация результатов")
-        
-        try:
-            import plotly.graph_objects as go
-            import pandas as pd
-            
-            # Создаём DataFrame
-            df_results = pd.DataFrame([
-                {
-                    'ID': r['test_id'],
-                    'Название': r['name'],
-                    'Ожидаемо': r['expected'],
-                    'Получено': r['actual'] if r['actual'] else 0,
-                    'Разница': r['difference'] if r['actual'] else 0,
-                    'Статус': 'Пройдено' if r['passed'] else ('Ошибка' if r['error'] else 'Провал')
-                }
-                for r in results
-            ])
-            
-            # График сравнения
-            fig = go.Figure()
-            
-            fig.add_trace(go.Bar(
-                name='Ожидаемо',
-                x=df_results['Название'],
-                y=df_results['Ожидаемо'],
-                marker_color='lightblue'
-            ))
-            
-            fig.add_trace(go.Bar(
-                name='Получено',
-                x=df_results['Название'],
-                y=df_results['Получено'],
-                marker_color='lightgreen'
-            ))
-            
-            fig.update_layout(
-                title='Сравнение ожидаемых и фактических значений',
-                xaxis_title='Тестовые фигуры',
-                yaxis_title='Длина реза (мм)',
-                barmode='group',
-                height=500
-            )
-            
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # График отклонений
-            fig2 = go.Figure()
-            
-            colors = ['green' if r['passed'] else 'red' for r in results]
-            
-            fig2.add_trace(go.Bar(
-                x=df_results['Название'],
-                y=df_results['Разница'],
-                marker_color=colors,
-                text=df_results['Разница'].round(2),
-                textposition='auto',
-            ))
-            
-            fig2.update_layout(
-                title='Абсолютные отклонения от эталона',
-                xaxis_title='Тестовые фигуры',
-                yaxis_title='Отклонение (мм)',
-                height=400
-            )
-            
-            st.plotly_chart(fig2, use_container_width=True)
-            
-        except ImportError:
-            st.info("📊 Для расширенной визуализации установите plotly: `pip install plotly`")
+        st.download_button(
+            label="📥 Скачать JSON",
+            data=json.dumps(json_data, indent=2, ensure_ascii=False),
+            file_name=f"test_results_{time.strftime('%Y%m%d_%H%M%S')}.json",
+            mime="application/json",
+            use_container_width=True
+        )
 
 
 if __name__ == "__main__":
