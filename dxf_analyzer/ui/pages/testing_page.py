@@ -99,7 +99,7 @@ def run_tests(debug_mode: bool = False):
     results = []
     
     # Запускаем тесты
-    for i, test_case in enumerate(test_cases):
+    for test_case in test_cases:
         file_path = fixtures_dir / test_case['file']
         
         start_time = time.time()
@@ -115,7 +115,8 @@ def run_tests(debug_mode: bool = False):
                 'passed': False,
                 'error': f"Файл не найден: {test_case['file']}",
                 'duration': 0,
-                'difference': float('inf')
+                'difference': float('inf'),
+                'percent_diff': 0
             })
             continue
         
@@ -249,78 +250,116 @@ def show_testing_page():
         with col1:
             st.metric("Всего тестов", total)
         with col2:
-            st.metric("Пройдено", passed, delta=f"{passed/total*100:.1f}%")
+            st.metric("Пройдено", passed, delta=f"{passed/total*100:.1f}%" if total > 0 else None)
         with col3:
             st.metric("Провалено", failed)
         with col4:
             st.metric("Ошибки", errors)
         
-        progress_percent = passed / total if total > 0 else 0
-        st.progress(progress_percent)
-        
-        if progress_percent == 1.0:
-            st.success("🎉 Все тесты пройдены успешно!")
-        elif progress_percent >= 0.8:
-            st.warning("⚠️ Большинство тестов пройдено, но есть проблемы")
-        else:
-            st.error("❌ Обнаружены серьёзные проблемы с расчётами")
+        if total > 0:
+            progress_percent = passed / total
+            st.progress(progress_percent)
+            
+            if progress_percent == 1.0:
+                st.success("🎉 Все тесты пройдены успешно!")
+            elif progress_percent >= 0.8:
+                st.warning("⚠️ Большинство тестов пройдено, но есть проблемы")
+            else:
+                st.error("❌ Обнаружены серьёзные проблемы с расчётами")
         
         # Детальная таблица
         st.markdown("---")
         st.subheader("📋 Детальные результаты")
         
-        # Сначала показываем проваленные тесты
-        failed_results = [r for r in results if not r['passed'] and not r['error']]
-        error_results = [r for r in results if r['error']]
-        passed_results = [r for r in results if r['passed']]
-        
-        # Отображение ошибок (если есть)
-        if error_results:
-            st.markdown("#### ❌ Ошибки выполнения")
-            for result in error_results:
-                with st.expander(f"⚠️ Тест #{result['test_id']}: {result['name']}", expanded=True):
-                    st.error(f"**Ошибка:** {result['error']}")
-                    st.code(f"Файл: {result['file']}\nОжидаемая длина: {result['expected']:.2f} мм")
-        
-        # Отображение проваленных тестов
-        if failed_results:
-            st.markdown("#### ❌ Проваленные тесты")
-            for result in failed_results:
-                with st.expander(f"❌ Тест #{result['test_id']}: {result['name']}", expanded=True):
+        # Отображение всех результатов
+        for result in results:
+            # Определяем стиль карточки
+            if result.get('error'):
+                card_color = "#fff3cd"
+                icon = "⚠️"
+                border_color = "#856404"
+                status_text_local = "ОШИБКА"
+            elif result.get('passed'):
+                card_color = "#d4edda"
+                icon = "✅"
+                border_color = "#28a745"
+                status_text_local = "ПРОЙДЕН"
+            else:
+                card_color = "#f8d7da"
+                icon = "❌"
+                border_color = "#dc3545"
+                status_text_local = "ПРОВАЛ"
+            
+            with st.container():
+                st.markdown(f"""
+                <div style="
+                    background-color: {card_color};
+                    padding: 15px;
+                    border-radius: 8px;
+                    margin-bottom: 10px;
+                    border-left: 5px solid {border_color};
+                ">
+                    <h4>{icon} Тест #{result['test_id']}: {result['name']} - <span style="font-size: 0.9em;">{status_text_local}</span></h4>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
                     st.write(f"**Файл:** `{result['file']}`")
-                    st.write(f"**Ожидаемая длина:** {result['expected']:.2f} мм")
-                    st.write(f"**Фактическая длина:** {result['actual']:.2f} мм")
-                    st.write(f"**Разница:** {result['difference']:.2f} мм")
-                    st.write(f"**Допуск:** {result['tolerance']:.2f} мм")
-                    st.write(f"**Отклонение:** {result['percent_diff']:.2f}%")
-                    
-                    # Дополнительная отладочная информация для сложной детали
-                    if result['test_id'] == 10:
-                        st.markdown("---")
-                        st.markdown("#### 🔍 Отладочная информация для сложной детали")
-                        st.info("""
-                        **Возможные причины расхождения:**
-                        1. Вырез в углу детали может интерпретироваться как отдельный контур
-                        2. Отверстия могут считаться с неверным радиусом
-                        3. Порядок обхода контуров может влиять на длину
-                        
-                        **Рекомендация:** Проверьте эталонное значение в файле `tests/fixtures/expected_results.json`
-                        """)
-        
-        # Отображение пройденных тестов
-        if passed_results:
-            st.markdown("#### ✅ Пройденные тесты")
-            for result in passed_results:
-                with st.expander(f"✅ Тест #{result['test_id']}: {result['name']}"):
-                    st.write(f"**Файл:** `{result['file']}`")
-                    st.write(f"**Ожидаемая длина:** {result['expected']:.2f} мм")
-                    st.write(f"**Фактическая длина:** {result['actual']:.2f} мм")
-                    st.write(f"**Разница:** {result['difference']:.4f} мм")
-                    st.write(f"**Отклонение:** {result['percent_diff']:.4f}%")
+                
+                with col2:
+                    st.write(f"**Ожидаемо:** {result['expected']:.2f} мм")
+                
+                with col3:
+                    if result.get('actual') is not None:
+                        st.write(f"**Получено:** {result['actual']:.2f} мм")
+                    else:
+                        st.write(f"**Получено:** N/A")
+                
+                with col4:
+                    if result.get('actual') is not None:
+                        diff_val = result.get('difference', 0)
+                        diff_color = "green" if result.get('passed') else "red"
+                        st.write(f"**Разница:** :{diff_color}[{diff_val:.3f} мм]")
+                    else:
+                        st.write(f"**Разница:** N/A")
+                
+                # Детали ошибки
+                if result.get('error'):
+                    with st.expander("🔍 Детали ошибки", expanded=True):
+                        st.code(result['error'], language="text")
+                
+                # Процент отклонения (только если есть actual)
+                if result.get('actual') is not None and not result.get('passed'):
+                    percent_diff = result.get('percent_diff', 0)
+                    with st.expander("📈 Анализ отклонения"):
+                        st.write(f"**Процент отклонения:** {percent_diff:.2f}%")
+                        st.write(f"**Допустимый допуск:** {result['tolerance']:.2f} мм")
+                        st.write(f"**Превышение допуска:** {result['difference'] - result['tolerance']:.2f} мм")
+                
+                st.markdown("---")
         
         # Экспорт
         st.markdown("---")
         st.subheader("💾 Экспорт результатов")
+        
+        # Подготовка данных для экспорта (без None значений)
+        export_results = []
+        for r in results:
+            export_results.append({
+                'test_id': r['test_id'],
+                'name': r['name'],
+                'file': r['file'],
+                'expected': r['expected'],
+                'actual': r['actual'],
+                'tolerance': r['tolerance'],
+                'passed': r['passed'],
+                'error': r.get('error'),
+                'duration': r['duration'],
+                'difference': r.get('difference'),
+                'percent_diff': r.get('percent_diff', 0)
+            })
         
         json_data = {
             "summary": {
@@ -328,9 +367,9 @@ def show_testing_page():
                 "passed": passed,
                 "failed": failed,
                 "errors": errors,
-                "success_rate": f"{passed/total*100:.1f}%"
+                "success_rate": f"{passed/total*100:.1f}%" if total > 0 else "0%"
             },
-            "results": results,
+            "results": export_results,
             "timestamp": time.strftime('%Y-%m-%d %H:%M:%S')
         }
         
