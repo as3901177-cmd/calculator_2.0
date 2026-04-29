@@ -14,6 +14,7 @@ sys.path.insert(0, str(project_root))
 # Импорт страниц
 from dxf_analyzer.ui.pages.main_page import render_main_page
 from dxf_analyzer.ui.pages.docs_page import render_docs_page
+from dxf_analyzer.ui.pages.testing_page import show_testing_page
 
 # Конфигурация страницы
 st.set_page_config(
@@ -34,7 +35,7 @@ def main():
         
         page = st.radio(
             "Навигация:",
-            options=["🏠 Главная", "📚 Документация"],
+            options=["🏠 Главная", "📚 Документация", "🧪 Тестирование"],
             label_visibility="collapsed"
         )
         
@@ -61,6 +62,8 @@ def main():
         render_main_page()
     elif page == "📚 Документация":
         render_docs_page()
+    elif page == "🧪 Тестирование":
+        show_testing_page()
 
 
 if __name__ == "__main__":
