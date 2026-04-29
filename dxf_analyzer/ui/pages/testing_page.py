@@ -13,27 +13,27 @@ import sys
 project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from tests.test_reporter import Colors, TestResult, VisualReporter, HTMLReporter
-from dxf_analyzer.parsers.dxf_reader import DXFReader
-from dxf_analyzer.calculators.registry import CalculatorRegistry
+from dxf_analyzer.parsers.dxf_reader import read_dxf_file
+from dxf_analyzer.parsers.entity_extractor import extract_entities
+from dxf_analyzer.core.errors import ErrorCollector
 
 
 def calculate_cut_length(file_path: str) -> float:
     """Функция расчёта длины реза"""
     try:
-        reader = DXFReader()
-        entities = reader.read(file_path)
+        # Открываем файл как бинарный
+        with open(file_path, 'rb') as f:
+            file_buffer = type('obj', (object,), {'getbuffer': lambda: f.read(), 'name': file_path})()
         
-        registry = CalculatorRegistry()
-        total_length = 0.0
+        collector = ErrorCollector()
+        doc, temp_path = read_dxf_file(file_buffer, collector)
         
-        for entity in entities:
-            entity_type = entity.dxftype()
-            calculator = registry.get_calculator(entity_type)
-            
-            if calculator:
-                length = calculator.calculate_length(entity)
-                total_length += length
+        if doc is None:
+            raise Exception("Не удалось прочитать DXF файл")
+        
+        objects_data = extract_entities(doc, collector)
+        
+        total_length = sum(obj.length for obj in objects_data)
         
         return total_length
     except Exception as e:
@@ -48,7 +48,7 @@ def run_tests():
     expected_file = fixtures_dir / "expected_results.json"
     
     if not expected_file.exists():
-        return None, "Файл эталонных данных не найден. Запустите setup_tests.py"
+        return None, "Файл эталонных данных не найден. Нажмите '⚙️ Настроить тесты'"
     
     with open(expected_file, 'r', encoding='utf-8') as f:
         data = json.load(f)
@@ -63,18 +63,19 @@ def run_tests():
         start_time = time.time()
         
         if not file_path.exists():
-            result = TestResult(
-                test_id=test_case['id'],
-                name=test_case['name'],
-                file=test_case['file'],
-                expected=test_case['expected_length'],
-                actual=None,
-                tolerance=test_case['tolerance'],
-                passed=False,
-                error=f"Файл не найден: {test_case['file']}",
-                duration=0
-            )
-            results.append(result)
+            # Создаём словарь вместо объекта класса
+            results.append({
+                'test_id': test_case['id'],
+                'name': test_case['name'],
+                'file': test_case['file'],
+                'expected': test_case['expected_length'],
+                'actual': None,
+                'tolerance': test_case['tolerance'],
+                'passed': False,
+                'error': f"Файл не найден: {test_case['file']}",
+                'duration': 0,
+                'difference': float('inf')
+            })
             continue
         
         try:
@@ -87,32 +88,32 @@ def run_tests():
             diff = abs(actual - expected)
             passed = diff <= tolerance
             
-            result = TestResult(
-                test_id=test_case['id'],
-                name=test_case['name'],
-                file=test_case['file'],
-                expected=expected,
-                actual=actual,
-                tolerance=tolerance,
-                passed=passed,
-                error=None,
-                duration=time.time() - start_time
-            )
+            results.append({
+                'test_id': test_case['id'],
+                'name': test_case['name'],
+                'file': test_case['file'],
+                'expected': expected,
+                'actual': actual,
+                'tolerance': tolerance,
+                'passed': passed,
+                'error': None,
+                'duration': time.time() - start_time,
+                'difference': diff
+            })
             
         except Exception as e:
-            result = TestResult(
-                test_id=test_case['id'],
-                name=test_case['name'],
-                file=test_case['file'],
-                expected=test_case['expected_length'],
-                actual=None,
-                tolerance=test_case['tolerance'],
-                passed=False,
-                error=str(e),
-                duration=time.time() - start_time
-            )
-        
-        results.append(result)
+            results.append({
+                'test_id': test_case['id'],
+                'name': test_case['name'],
+                'file': test_case['file'],
+                'expected': test_case['expected_length'],
+                'actual': None,
+                'tolerance': test_case['tolerance'],
+                'passed': False,
+                'error': str(e),
+                'duration': time.time() - start_time,
+                'difference': float('inf')
+            })
     
     return results, None
 
@@ -175,15 +176,11 @@ def show_testing_page():
     
     # Запуск тестов
     if run_button:
-        # Прогресс
-        progress_bar = st.progress(0)
         status_text = st.empty()
-        
         status_text.text("⏳ Запуск тестов...")
         
         with st.spinner("Выполнение тестов..."):
             results, error = run_tests()
-            progress_bar.progress(100)
         
         if error:
             st.error(f"❌ {error}")
@@ -198,9 +195,9 @@ def show_testing_page():
         results = st.session_state.test_results
         
         # Статистика
-        passed = sum(1 for r in results if r.passed)
-        failed = sum(1 for r in results if not r.passed and not r.error)
-        errors = sum(1 for r in results if r.error)
+        passed = sum(1 for r in results if r['passed'])
+        failed = sum(1 for r in results if not r['passed'] and not r['error'])
+        errors = sum(1 for r in results if r['error'])
         total = len(results)
         
         # Метрики
@@ -255,35 +252,38 @@ def show_testing_page():
         filtered_results = results.copy()
         
         if show_filter == "Только пройденные":
-            filtered_results = [r for r in results if r.passed]
+            filtered_results = [r for r in results if r['passed']]
         elif show_filter == "Только провалы":
-            filtered_results = [r for r in results if not r.passed and not r.error]
+            filtered_results = [r for r in results if not r['passed'] and not r['error']]
         elif show_filter == "Только ошибки":
-            filtered_results = [r for r in results if r.error]
+            filtered_results = [r for r in results if r['error']]
         
         # Сортировка
         if sort_by == "По разнице":
-            filtered_results.sort(key=lambda r: r.difference if r.actual else float('inf'), reverse=True)
+            filtered_results.sort(key=lambda r: r['difference'] if r['actual'] else float('inf'), reverse=True)
         elif sort_by == "По статусу":
-            filtered_results.sort(key=lambda r: (not r.passed, r.error is not None))
+            filtered_results.sort(key=lambda r: (not r['passed'], r['error'] is not None))
         else:
-            filtered_results.sort(key=lambda r: r.test_id)
+            filtered_results.sort(key=lambda r: r['test_id'])
         
         # Таблица результатов
         for result in filtered_results:
             # Цвет карточки
-            if result.error:
+            if result['error']:
                 card_color = "#fff3cd"
                 icon = "⚠️"
-                status_text = "ERROR"
-            elif result.passed:
+                status_text_disp = "ERROR"
+                border_color = "#856404"
+            elif result['passed']:
                 card_color = "#d4edda"
                 icon = "✅"
-                status_text = "PASS"
+                status_text_disp = "PASS"
+                border_color = "#28a745"
             else:
                 card_color = "#f8d7da"
                 icon = "❌"
-                status_text = "FAIL"
+                status_text_disp = "FAIL"
+                border_color = "#dc3545"
             
             with st.container():
                 st.markdown(f"""
@@ -292,47 +292,47 @@ def show_testing_page():
                     padding: 15px;
                     border-radius: 8px;
                     margin-bottom: 10px;
-                    border-left: 5px solid {'#856404' if result.error else '#28a745' if result.passed else '#dc3545'};
+                    border-left: 5px solid {border_color};
                 ">
-                    <h4>{icon} Тест #{result.test_id}: {result.name}</h4>
+                    <h4>{icon} Тест #{result['test_id']}: {result['name']}</h4>
                 </div>
                 """, unsafe_allow_html=True)
                 
                 col1, col2, col3, col4 = st.columns(4)
                 
                 with col1:
-                    st.write(f"**Файл:** `{result.file}`")
+                    st.write(f"**Файл:** `{result['file']}`")
                 
                 with col2:
-                    st.write(f"**Ожидаемо:** {result.expected:.2f} мм")
+                    st.write(f"**Ожидаемо:** {result['expected']:.2f} мм")
                 
                 with col3:
-                    if result.actual is not None:
-                        st.write(f"**Получено:** {result.actual:.2f} мм")
+                    if result['actual'] is not None:
+                        st.write(f"**Получено:** {result['actual']:.2f} мм")
                     else:
                         st.write(f"**Получено:** N/A")
                 
                 with col4:
-                    if result.actual is not None:
-                        diff_color = "green" if result.passed else "red"
-                        st.write(f"**Разница:** :{diff_color}[{result.difference:.3f} мм]")
+                    if result['actual'] is not None:
+                        diff_color = "green" if result['passed'] else "red"
+                        st.write(f"**Разница:** :{diff_color}[{result['difference']:.3f} мм]")
                     else:
                         st.write(f"**Разница:** N/A")
                 
                 # Детали ошибки
-                if result.error:
+                if result['error']:
                     with st.expander("🔍 Детали ошибки"):
-                        st.code(result.error, language="text")
+                        st.code(result['error'], language="text")
                 
                 # Процент отклонения
-                if result.actual is not None and result.expected > 0:
-                    percent_diff = (result.difference / result.expected) * 100
+                if result['actual'] is not None and result['expected'] > 0:
+                    percent_diff = (result['difference'] / result['expected']) * 100
                     
-                    if not result.passed:
+                    if not result['passed']:
                         with st.expander("📈 Анализ отклонения"):
                             st.write(f"**Процент отклонения:** {percent_diff:.2f}%")
-                            st.write(f"**Допустимый допуск:** {result.tolerance:.2f} мм")
-                            st.write(f"**Превышение допуска:** {result.difference - result.tolerance:.2f} мм")
+                            st.write(f"**Допустимый допуск:** {result['tolerance']:.2f} мм")
+                            st.write(f"**Превышение допуска:** {result['difference'] - result['tolerance']:.2f} мм")
                 
                 st.markdown("---")
         
@@ -352,21 +352,7 @@ def show_testing_page():
                     "errors": errors,
                     "success_rate": f"{passed/total*100:.1f}%"
                 },
-                "results": [
-                    {
-                        "id": r.test_id,
-                        "name": r.name,
-                        "file": r.file,
-                        "expected": r.expected,
-                        "actual": r.actual,
-                        "difference": r.difference if r.actual else None,
-                        "tolerance": r.tolerance,
-                        "passed": r.passed,
-                        "error": r.error,
-                        "duration": r.duration
-                    }
-                    for r in results
-                ]
+                "results": results
             }
             
             st.download_button(
@@ -378,96 +364,91 @@ def show_testing_page():
             )
         
         with col2:
-            # HTML отчёт
-            if st.button("📄 Сгенерировать HTML отчёт", use_container_width=True):
-                html_path = Path("tests/test_report.html")
-                html_reporter = HTMLReporter(results, str(html_path))
-                html_reporter.generate()
-                
-                st.success(f"✅ HTML отчёт создан: {html_path}")
-                
-                # Кнопка для открытия
-                with open(html_path, 'r', encoding='utf-8') as f:
-                    html_content = f.read()
-                
-                st.download_button(
-                    label="📥 Скачать HTML отчёт",
-                    data=html_content,
-                    file_name=f"test_report_{time.strftime('%Y%m%d_%H%M%S')}.html",
-                    mime="text/html",
-                    use_container_width=True
-                )
+            # CSV экспорт
+            import pandas as pd
+            df = pd.DataFrame(results)
+            csv_data = df.to_csv(index=False, encoding='utf-8-sig')
+            st.download_button(
+                label="📥 Скачать CSV",
+                data=csv_data,
+                file_name=f"test_results_{time.strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+        
+        # Визуализация результатов
+        st.markdown("---")
+        st.subheader("📈 Визуализация результатов")
+        
+        try:
+            import plotly.graph_objects as go
+            import pandas as pd
+            
+            # Создаём DataFrame
+            df_results = pd.DataFrame([
+                {
+                    'ID': r['test_id'],
+                    'Название': r['name'],
+                    'Ожидаемо': r['expected'],
+                    'Получено': r['actual'] if r['actual'] else 0,
+                    'Разница': r['difference'] if r['actual'] else 0,
+                    'Статус': 'Пройдено' if r['passed'] else ('Ошибка' if r['error'] else 'Провал')
+                }
+                for r in results
+            ])
+            
+            # График сравнения
+            fig = go.Figure()
+            
+            fig.add_trace(go.Bar(
+                name='Ожидаемо',
+                x=df_results['Название'],
+                y=df_results['Ожидаемо'],
+                marker_color='lightblue'
+            ))
+            
+            fig.add_trace(go.Bar(
+                name='Получено',
+                x=df_results['Название'],
+                y=df_results['Получено'],
+                marker_color='lightgreen'
+            ))
+            
+            fig.update_layout(
+                title='Сравнение ожидаемых и фактических значений',
+                xaxis_title='Тестовые фигуры',
+                yaxis_title='Длина реза (мм)',
+                barmode='group',
+                height=500
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # График отклонений
+            fig2 = go.Figure()
+            
+            colors = ['green' if r['passed'] else 'red' for r in results]
+            
+            fig2.add_trace(go.Bar(
+                x=df_results['Название'],
+                y=df_results['Разница'],
+                marker_color=colors,
+                text=df_results['Разница'].round(2),
+                textposition='auto',
+            ))
+            
+            fig2.update_layout(
+                title='Абсолютные отклонения от эталона',
+                xaxis_title='Тестовые фигуры',
+                yaxis_title='Отклонение (мм)',
+                height=400
+            )
+            
+            st.plotly_chart(fig2, use_container_width=True)
+            
+        except ImportError:
+            st.info("📊 Для расширенной визуализации установите plotly: `pip install plotly`")
 
 
 if __name__ == "__main__":
     show_testing_page()
-    # После блока с метриками добавьте:
-
-# График результатов
-st.markdown("---")
-st.subheader("📈 Визуализация результатов")
-
-import pandas as pd
-import plotly.graph_objects as go
-
-# Создаём DataFrame
-df_results = pd.DataFrame([
-    {
-        'ID': r.test_id,
-        'Название': r.name,
-        'Ожидаемо': r.expected,
-        'Получено': r.actual if r.actual else 0,
-        'Разница': r.difference if r.actual else 0,
-        'Статус': 'Пройдено' if r.passed else ('Ошибка' if r.error else 'Провал')
-    }
-    for r in results
-])
-
-# График сравнения
-fig = go.Figure()
-
-fig.add_trace(go.Bar(
-    name='Ожидаемо',
-    x=df_results['Название'],
-    y=df_results['Ожидаемо'],
-    marker_color='lightblue'
-))
-
-fig.add_trace(go.Bar(
-    name='Получено',
-    x=df_results['Название'],
-    y=df_results['Получено'],
-    marker_color='lightgreen'
-))
-
-fig.update_layout(
-    title='Сравнение ожидаемых и фактических значений',
-    xaxis_title='Тестовые фигуры',
-    yaxis_title='Длина реза (мм)',
-    barmode='group',
-    height=500
-)
-
-st.plotly_chart(fig, use_container_width=True)
-
-# График отклонений
-fig2 = go.Figure()
-
-colors = ['green' if r.passed else 'red' for r in results]
-
-fig2.add_trace(go.Bar(
-    x=df_results['Название'],
-    y=df_results['Разница'],
-    marker_color=colors,
-    text=df_results['Разница'].round(2),
-    textposition='auto',
-))
-
-fig2.update_layout(
-    title='Абсолютные отклонения от эталона',
-    xaxis_title='Тестовые фигуры',
-    yaxis_title='Отклонение (мм)',
-    height=400
-)
-
-st.plotly_chart(fig2, use_container_width=True)
