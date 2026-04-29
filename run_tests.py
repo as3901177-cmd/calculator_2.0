@@ -1,49 +1,88 @@
-# run_tests.py (в корне проекта)
+#!/usr/bin/env python3
 """
-Запуск тестов с красивой визуализацией
+Скрипт запуска тестов DXF Analyzer
 """
 
 import subprocess
 import sys
-import webbrowser
 from pathlib import Path
 
 
-def main():
-    """Главная функция"""
+def run_tests():
+    """Запуск всех тестов с pytest"""
     
-    # ASCII арт
-    print("""
-    ╔══════════════════════════════════════════════════════════╗
-    ║                                                          ║
-    ║              DXF ANALYZER - TEST SUITE                   ║
-    ║                                                          ║
-    ║            Тестирование расчёта длины реза               ║
-    ║                                                          ║
-    ╚══════════════════════════════════════════════════════════╝
-    """)
+    print("🧪 Запуск тестов CAD Analyzer Pro...\n")
+    print("="*70)
     
-    # Запуск тестов
-    print("\n🚀 Запуск тестов...\n")
+    # Проверка наличия pytest
+    try:
+        import pytest
+        print("✅ pytest найден")
+    except ImportError:
+        print("❌ pytest не установлен!")
+        print("\nУстановите pytest:")
+        print("   pip install pytest pytest-cov")
+        sys.exit(1)
     
-    result = subprocess.run(
-        [sys.executable, "-m", "pytest", "tests/", "-v", "--tb=short", "-p", "no:warnings"],
-        cwd=Path(__file__).parent
-    )
+    # Проверка наличия тестов
+    tests_dir = Path("tests")
+    if not tests_dir.exists():
+        print(f"❌ Директория тестов не найдена: {tests_dir}")
+        sys.exit(1)
     
-    # Проверка наличия HTML отчёта
-    html_report = Path("tests/test_report.html")
+    print(f"✅ Директория тестов: {tests_dir.absolute()}")
+    print("="*70 + "\n")
     
-    if html_report.exists():
-        print(f"\n📊 HTML отчёт создан: {html_report}")
+    # Запуск pytest
+    try:
+        # Опции pytest
+        pytest_args = [
+            "tests/",           # Директория с тестами
+            "-v",               # Verbose вывод
+            "--tb=short",       # Короткий traceback
+            "--color=yes",      # Цветной вывод
+            "-ra",              # Показать summary всех тестов
+        ]
         
-        # Предложение открыть отчёт
-        response = input("\nОткрыть HTML отчёт в браузере? (y/n): ")
-        if response.lower() == 'y':
-            webbrowser.open(html_report.absolute().as_uri())
-    
-    return result.returncode
+        # Если нужно покрытие кода
+        if "--coverage" in sys.argv:
+            pytest_args.extend([
+                "--cov=dxf_analyzer",
+                "--cov-report=html",
+                "--cov-report=term"
+            ])
+            print("📊 Включён анализ покрытия кода\n")
+        
+        # Запуск
+        exit_code = pytest.main(pytest_args)
+        
+        print("\n" + "="*70)
+        if exit_code == 0:
+            print("✅ ВСЕ ТЕСТЫ ПРОЙДЕНЫ УСПЕШНО!")
+        else:
+            print("❌ НЕКОТОРЫЕ ТЕСТЫ НЕ ПРОШЛИ")
+        print("="*70 + "\n")
+        
+        # HTML отчёт
+        report_file = Path("tests/test_report.html")
+        if report_file.exists():
+            print(f"📄 HTML отчёт создан: {report_file.absolute()}")
+        
+        sys.exit(exit_code)
+        
+    except KeyboardInterrupt:
+        print("\n\n⚠️ Тесты прерваны пользователем")
+        sys.exit(1)
+    except Exception as e:
+        print(f"\n❌ Ошибка запуска тестов: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    print("\n" + "="*70)
+    print("CAD ANALYZER PRO - СИСТЕМА ТЕСТИРОВАНИЯ")
+    print("="*70 + "\n")
+    
+    run_tests()
