@@ -1,67 +1,73 @@
-# create_streamlit_config.py
 """
-Скрипт для автоматического создания .streamlit/config.toml
+Скрипт для создания конфигурации Streamlit
+Настраивает .streamlit/config.toml для корректной работы приложения
 """
 
 from pathlib import Path
 
-# Содержимое config.toml
-config_content = """# .streamlit/config.toml
-# Конфигурация Streamlit приложения
 
-[theme]
-primaryColor = "#667eea"
-backgroundColor = "#ffffff"
-secondaryBackgroundColor = "#f0f2f6"
-textColor = "#262730"
-font = "sans serif"
-
-[server]
-headless = true
-port = 8501
-enableCORS = false
-enableXsrfProtection = true
-
-[browser]
-gatherUsageStats = false
-serverAddress = "localhost"
-serverPort = 8501
-
-[runner]
-magicEnabled = true
-fastReruns = true
-
-[logger]
-level = "info"
-
-[client]
-showErrorDetails = true
-toolbarMode = "auto"
-"""
-
-def create_config():
-    """Создание конфигурационного файла"""
+def create_streamlit_config():
+    """Создание конфигурационного файла Streamlit"""
     
     # Создаём директорию .streamlit
     streamlit_dir = Path(".streamlit")
     streamlit_dir.mkdir(exist_ok=True)
     
-    # Создаём config.toml
+    # Путь к config.toml
     config_file = streamlit_dir / "config.toml"
     
+    # Конфигурация
+    config_content = """# CAD Analyzer Pro - Streamlit Configuration
+
+[server]
+# Включаем статические файлы для HTML экспорта
+enableStaticServing = true
+
+# Порт (можно изменить если занят)
+port = 8501
+
+# Отключаем наблюдение за файлами в продакшене
+fileWatcherType = "none"
+
+[browser]
+# Автоматически открывать браузер
+gatherUsageStats = false
+
+[theme]
+# Тема приложения
+primaryColor = "#667eea"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#f0f2f6"
+textColor = "#262730"
+font = "sans serif"
+
+[client]
+# Показывать панель инструментов
+showErrorDetails = true
+"""
+    
+    # Запись конфигурации
     with open(config_file, 'w', encoding='utf-8') as f:
         f.write(config_content)
     
-    print(f"✅ Файл создан: {config_file}")
-    print(f"📁 Полный путь: {config_file.absolute()}")
+    print("✅ Конфигурация Streamlit создана:")
+    print(f"   📄 {config_file.absolute()}")
+    print("\n📝 Созданные настройки:")
+    print("   ✓ Статические файлы включены")
+    print("   ✓ Порт: 8501")
+    print("   ✓ Тема настроена")
+    print("   ✓ Отображение ошибок включено")
     
-    # Проверка
-    if config_file.exists():
-        print("✅ Проверка: файл существует")
-        print(f"📊 Размер: {config_file.stat().st_size} байт")
-    else:
-        print("❌ Ошибка: файл не создан")
+    # Создаём директорию для статических файлов
+    static_dir = streamlit_dir / "static"
+    static_dir.mkdir(exist_ok=True)
+    print(f"\n📁 Директория для статики: {static_dir.absolute()}")
+    
+    return config_file
 
 
 if __name__ == "__main__":
-    create_config()
+    print("🔧 Создание конфигурации Streamlit...\n")
+    config_file = create_streamlit_config()
+    print("\n✅ Готово! Можно запускать приложение:")
+    print("   streamlit run app.py")
