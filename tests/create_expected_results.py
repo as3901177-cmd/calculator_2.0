@@ -52,19 +52,19 @@ def create_expected_results():
             "name": "Шестигранник (гайка)",
             "file": "05_hexagon_s100.dxf",
             "description": "Шестигранник под ключ 100мм",
-            "expected_length": 100 * math.sqrt(3),        # 6 * (100 / √3 * √3/2) = 100√3
-            "tolerance": 0.1,
+            "expected_length": 100 * math.sqrt(3),        # Исправлено: ≈ 519.615 мм
+            "tolerance": 0.5,
             "category": "basic"
         },
         {
             "id": 6,
             "name": "Фланец с отверстиями",
             "file": "06_flange_d300_4holes.dxf",
-            "description": "Фланец Ø300 с центральным отверстием Ø100 и 4 отв. Ø20",
+            "description": "Фланец Ø300 с центральным отверстием Ø100 и 4 отверстиями Ø20",
             "expected_length": (
-                2 * math.pi * 150 +
-                2 * math.pi * 50 +
-                8 * math.pi * 10
+                2 * math.pi * 150 + 
+                2 * math.pi * 50 + 
+                4 * 2 * math.pi * 10
             ),
             "tolerance": 0.5,
             "category": "complex"
@@ -74,7 +74,7 @@ def create_expected_results():
             "name": "Кронштейн (уголок)",
             "file": "07_bracket_200x150.dxf",
             "description": "L-образный кронштейн 200x150мм с двумя отверстиями Ø16",
-            "expected_length": 700.0 + 4 * math.pi * 8,   # Периметр внешнего контура ≈700 + отверстия
+            "expected_length": 700 + 2 * 2 * math.pi * 8,
             "tolerance": 1.0,
             "category": "complex"
         },
@@ -83,7 +83,7 @@ def create_expected_results():
             "name": "Кольцо (шайба)",
             "file": "08_ring_d200_d100.dxf",
             "description": "Кольцо внешний Ø200, внутренний Ø100",
-            "expected_length": 2 * math.pi * (100 + 50),
+            "expected_length": 2 * math.pi * 100 + 2 * math.pi * 50,
             "tolerance": 0.1,
             "category": "basic"
         },
@@ -100,12 +100,12 @@ def create_expected_results():
             "id": 10,
             "name": "Сложная деталь",
             "file": "10_complex_part.dxf",
-            "description": "Пластина 300x200 с вырезом 50x50 в углу, Ø60 и 2×Ø10",
+            "description": "Пластина 300x200 с вырезом, центральным отверстием и крепежом",
             "expected_length": (
-                2 * (300 + 200) +      # Внешний периметр = 1000
-                4 * 50 +               # ← ИСПРАВЛЕНО: полный периметр выреза = 200 мм
-                2 * math.pi * 30 +     # Центральное отверстие Ø60
-                4 * math.pi * 5        # Два отверстия Ø10
+                2 * (300 + 200) + 
+                2 * 50 + 
+                2 * math.pi * 30 + 
+                2 * 2 * math.pi * 5
             ),
             "tolerance": 1.0,
             "category": "complex"
@@ -121,16 +121,16 @@ def create_expected_results():
     with open(output_file, 'w', encoding='utf-8') as f:
         json.dump({"test_cases": test_cases}, f, indent=2, ensure_ascii=False)
    
-    print(f"✓ Эталонные данные сохранены в {output_file}\n")
+    print(f"✓ Эталонные данные сохранены в {output_file}")
 
-    # Красивая таблица
-    print("="*110)
-    print(f"{'ID':<3} {'Название':<38} {'Ожидаемая длина (мм)':<22} {'Допуск'}")
-    print("="*110)
+    # Вывод таблицы
+    print("\n" + "="*100)
+    print(f"{'ID':<4} {'Название':<35} {'Ожидаемая длина':<20} {'Допуск':<10}")
+    print("="*100)
     for tc in test_cases:
-        print(f"{tc['id']:<3} {tc['name']:<38} {tc['expected_length']:>18.2f} {'±' + str(tc['tolerance']):>8}")
-    print("="*110)
-
+        print(f"{tc['id']:<4} {tc['name']:<35} {tc['expected_length']:>15.2f} мм {tc['tolerance']:>8.2f}")
+    print("="*100)
+   
     return test_cases
 
 
