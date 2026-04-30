@@ -52,7 +52,7 @@ def create_expected_results():
             "name": "Шестигранник (гайка)",
             "file": "05_hexagon_s100.dxf",
             "description": "Шестигранник под ключ 100мм",
-            "expected_length": 100 * math.sqrt(3),        # Исправлено: ≈ 519.615 мм
+            "expected_length": 100 * math.sqrt(3),        # ≈ 519.615 мм — ПРАВИЛЬНО
             "tolerance": 0.5,
             "category": "basic"
         },
@@ -112,7 +112,6 @@ def create_expected_results():
         }
     ]
    
-    # Сохранение в JSON
     output_dir = Path("tests/fixtures")
     output_dir.mkdir(parents=True, exist_ok=True)
    
@@ -123,13 +122,12 @@ def create_expected_results():
    
     print(f"✓ Эталонные данные сохранены в {output_file}")
 
-    # Вывод таблицы
-    print("\n" + "="*100)
-    print(f"{'ID':<4} {'Название':<35} {'Ожидаемая длина':<20} {'Допуск':<10}")
-    print("="*100)
+    print("\n" + "="*105)
+    print(f"{'ID':<3} {'Название':<36} {'Ожидаемая длина (мм)':<22} {'Допуск'}")
+    print("="*105)
     for tc in test_cases:
-        print(f"{tc['id']:<4} {tc['name']:<35} {tc['expected_length']:>15.2f} мм {tc['tolerance']:>8.2f}")
-    print("="*100)
+        print(f"{tc['id']:<3} {tc['name']:<36} {tc['expected_length']:>18.2f} ±{tc['tolerance']}")
+    print("="*105)
    
     return test_cases
 
