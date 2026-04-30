@@ -93,14 +93,18 @@ class TestFixturesGenerator:
         print(f"✓ 04 Треугольник 150     → {expected_length:.3f} мм")
         return expected_length
 
-    def create_hexagon(self):
+        def create_hexagon(self):
         """5. Шестигранник (размер под ключ 100 мм)"""
         doc = ezdxf.new('R2010')
         msp = doc.modelspace()
 
-        size_across_flats = 100.0
-        # Радиус описанной окружности для шестигранника "под ключ"
-        radius = size_across_flats / math.sqrt(3)
+        across_flats = 100.0                    # Размер под ключ (расстояние между параллельными сторонами)
+        
+        # Правильная длина одной стороны
+        side_length = across_flats * math.sqrt(3) / 2
+        
+        # Радиус описанной окружности
+        radius = across_flats / math.sqrt(3)
 
         points = []
         for i in range(6):
@@ -110,6 +114,12 @@ class TestFixturesGenerator:
             points.append((x, y))
 
         msp.add_lwpolyline(points, close=True)
+
+        expected_length = 6 * side_length
+
+        doc.saveas(self.output_dir / "05_hexagon_s100.dxf")
+        print(f"✓ 05 Шестигранник 100    → {expected_length:.3f} мм  (под ключ 100 мм)")
+        return expected_length
 
         # Правильная длина одной стороны шестигранника
         side_length = size_across_flats / 2 * math.sqrt(3)   # или 2 * radius * sin(π/6)
