@@ -36,12 +36,10 @@ class TestFixturesGenerator:
         """1. Круг Ø200 мм"""
         doc = ezdxf.new('R2010')
         msp = doc.modelspace()
-
         radius = 100.0
         msp.add_circle((0, 0), radius=radius)
 
         expected_length = 2 * math.pi * radius
-
         doc.saveas(self.output_dir / "01_circle_d200.dxf")
         print(f"✓ 01 Круг Ø200          → {expected_length:.3f} мм")
         return expected_length
@@ -50,13 +48,11 @@ class TestFixturesGenerator:
         """2. Прямоугольник 300×200 мм"""
         doc = ezdxf.new('R2010')
         msp = doc.modelspace()
-
         width, height = 300.0, 200.0
         points = [(0, 0), (width, 0), (width, height), (0, height)]
         msp.add_lwpolyline(points, close=True)
 
         expected_length = 2 * (width + height)
-
         doc.saveas(self.output_dir / "02_rectangle_300x200.dxf")
         print(f"✓ 02 Прямоугольник 300×200 → {expected_length:.3f} мм")
         return expected_length
@@ -65,13 +61,11 @@ class TestFixturesGenerator:
         """3. Квадрат 250×250 мм"""
         doc = ezdxf.new('R2010')
         msp = doc.modelspace()
-
         side = 250.0
         points = [(0, 0), (side, 0), (side, side), (0, side)]
         msp.add_lwpolyline(points, close=True)
 
         expected_length = 4 * side
-
         doc.saveas(self.output_dir / "03_square_250.dxf")
         print(f"✓ 03 Квадрат 250×250     → {expected_length:.3f} мм")
         return expected_length
@@ -80,30 +74,23 @@ class TestFixturesGenerator:
         """4. Равносторонний треугольник со стороной 150 мм"""
         doc = ezdxf.new('R2010')
         msp = doc.modelspace()
-
         side = 150.0
         height = side * math.sqrt(3) / 2
-
         points = [(0, 0), (side, 0), (side / 2, height)]
         msp.add_lwpolyline(points, close=True)
 
         expected_length = 3 * side
-
         doc.saveas(self.output_dir / "04_triangle_s150.dxf")
         print(f"✓ 04 Треугольник 150     → {expected_length:.3f} мм")
         return expected_length
 
-        def create_hexagon(self):
-        """5. Шестигранник (размер под ключ 100 мм)"""
+    def create_hexagon(self):
+        """5. Шестигранник (размер под ключ 100 мм) — ИСПРАВЛЕНО"""
         doc = ezdxf.new('R2010')
         msp = doc.modelspace()
 
-        across_flats = 100.0                    # Размер под ключ (расстояние между параллельными сторонами)
-        
-        # Правильная длина одной стороны
+        across_flats = 100.0
         side_length = across_flats * math.sqrt(3) / 2
-        
-        # Радиус описанной окружности
         radius = across_flats / math.sqrt(3)
 
         points = []
@@ -118,19 +105,11 @@ class TestFixturesGenerator:
         expected_length = 6 * side_length
 
         doc.saveas(self.output_dir / "05_hexagon_s100.dxf")
-        print(f"✓ 05 Шестигранник 100    → {expected_length:.3f} мм  (под ключ 100 мм)")
-        return expected_length
-
-        # Правильная длина одной стороны шестигранника
-        side_length = size_across_flats / 2 * math.sqrt(3)   # или 2 * radius * sin(π/6)
-        expected_length = 6 * side_length
-
-        doc.saveas(self.output_dir / "05_hexagon_s100.dxf")
         print(f"✓ 05 Шестигранник 100    → {expected_length:.3f} мм")
         return expected_length
 
     def create_flange(self):
-        """6. Фланец Ø300 мм с центральным отверстием Ø100 и 4 отверстиями Ø20"""
+        """6. Фланец Ø300 мм с отверстиями"""
         doc = ezdxf.new('R2010')
         msp = doc.modelspace()
 
@@ -151,7 +130,7 @@ class TestFixturesGenerator:
         expected_length = (
             2 * math.pi * outer_radius +
             2 * math.pi * center_hole_radius +
-            4 * 2 * math.pi * hole_radius
+            8 * math.pi * hole_radius
         )
 
         doc.saveas(self.output_dir / "06_flange_d300_4holes.dxf")
@@ -159,7 +138,7 @@ class TestFixturesGenerator:
         return expected_length
 
     def create_bracket(self):
-        """7. Кронштейн (L-образный) 200×150 мм с двумя отверстиями Ø16"""
+        """7. Кронштейн (L-образный)"""
         doc = ezdxf.new('R2010')
         msp = doc.modelspace()
 
@@ -172,7 +151,7 @@ class TestFixturesGenerator:
         msp.add_circle((25, 25), radius=8)
         msp.add_circle((25, 125), radius=8)
 
-        # Расчёт периметра внешнего контура
+        # Расчёт периметра
         outer_length = 0.0
         n = len(points)
         for i in range(n):
@@ -180,8 +159,7 @@ class TestFixturesGenerator:
             x2, y2 = points[(i + 1) % n]
             outer_length += math.hypot(x2 - x1, y2 - y1)
 
-        holes_length = 4 * math.pi * 8  # 2 отверстия
-
+        holes_length = 4 * math.pi * 8
         expected_length = outer_length + holes_length
 
         doc.saveas(self.output_dir / "07_bracket_200x150.dxf")
@@ -214,17 +192,13 @@ class TestFixturesGenerator:
         width = 50.0
         r = width / 2
 
-        # Левый полукруг
         msp.add_arc(center=(r, r), radius=r, start_angle=90, end_angle=270)
-        # Правый полукруг
         msp.add_arc(center=(length - r, r), radius=r, start_angle=270, end_angle=90)
-        # Верхняя прямая
         msp.add_line((r, width), (length - r, width))
-        # Нижняя прямая
         msp.add_line((r, 0), (length - r, 0))
 
         straight = length - width
-        arcs = 2 * math.pi * r          # два полукруга = одна полная окружность
+        arcs = 2 * math.pi * r
 
         expected_length = 2 * straight + arcs
 
@@ -233,7 +207,7 @@ class TestFixturesGenerator:
         return expected_length
 
     def create_complex_part(self):
-        """10. Сложная деталь — прямоугольник 300×200 с вырезом, отверстиями"""
+        """10. Сложная деталь"""
         doc = ezdxf.new('R2010')
         msp = doc.modelspace()
 
@@ -241,22 +215,20 @@ class TestFixturesGenerator:
         base_points = [(0, 0), (300, 0), (300, 200), (0, 200)]
         msp.add_lwpolyline(base_points, close=True)
 
-        # Вырез 50×50 в правом верхнем углу
+        # Вырез 50x50 в правом верхнем углу
         cutout_points = [(250, 150), (300, 150), (300, 200), (250, 200)]
         msp.add_lwpolyline(cutout_points, close=True)
 
-        # Центральное отверстие Ø60
-        msp.add_circle((150, 100), radius=30)
+        # Отверстия
+        msp.add_circle((150, 100), radius=30)   # Ø60
+        msp.add_circle((50, 50), radius=5)      # Ø10
+        msp.add_circle((250, 50), radius=5)     # Ø10
 
-        # Два монтажных отверстия Ø10
-        msp.add_circle((50, 50), radius=5)
-        msp.add_circle((250, 50), radius=5)
-
-        # === Правильный расчёт длины реза ===
-        outer_perimeter = 2 * (300 + 200)      # 1000 мм
-        cutout_perimeter = 4 * 50              # 200 мм — важно! полный периметр выреза
+        # Правильный расчёт длины реза
+        outer_perimeter = 2 * (300 + 200)
+        cutout_perimeter = 4 * 50                    # ← Полный периметр выреза
         center_hole = 2 * math.pi * 30
-        mounting_holes = 4 * math.pi * 5       # 2 отверстия
+        mounting_holes = 4 * math.pi * 5
 
         expected_length = outer_perimeter + cutout_perimeter + center_hole + mounting_holes
 
