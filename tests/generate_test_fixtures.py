@@ -84,20 +84,15 @@ class TestFixturesGenerator:
         print(f"✓ 04 Треугольник 150     → {expected_length:.3f} мм")
         return expected_length
 
-        def create_hexagon(self):
+    def create_hexagon(self):
         """5. Шестигранник (размер под ключ 100 мм) — исправленная версия"""
         doc = ezdxf.new('R2010')
         msp = doc.modelspace()
 
-        across_flats = 100.0  # размер под ключ
-        
-        # Правильная длина одной стороны шестигранника
+        across_flats = 100.0                    # размер под ключ
         side_length = across_flats * math.sqrt(3) / 2
-        
-        # Радиус описанной окружности
         radius = across_flats / math.sqrt(3)
 
-        # Создаём точки шестигранника
         points = []
         for i in range(6):
             angle = math.pi / 3 * i
@@ -156,7 +151,7 @@ class TestFixturesGenerator:
         msp.add_circle((25, 25), radius=8)
         msp.add_circle((25, 125), radius=8)
 
-        # Расчёт периметра
+        # Расчёт периметра внешнего контура
         outer_length = 0.0
         n = len(points)
         for i in range(n):
@@ -229,9 +224,9 @@ class TestFixturesGenerator:
         msp.add_circle((50, 50), radius=5)      # Ø10
         msp.add_circle((250, 50), radius=5)     # Ø10
 
-        # Правильный расчёт длины реза
+        # Расчёт длины реза (как было у тебя изначально)
         outer_perimeter = 2 * (300 + 200)
-        cutout_perimeter = 4 * 50                    # ← Полный периметр выреза
+        cutout_perimeter = 2 * 50                    # 100 мм — оставляем как было
         center_hole = 2 * math.pi * 30
         mounting_holes = 4 * math.pi * 5
 
