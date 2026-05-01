@@ -207,34 +207,40 @@ class TestFixturesGenerator:
         return expected_length
 
     def create_complex_part(self):
-        """10. Сложная деталь"""
-        doc = ezdxf.new('R2010')
-        msp = doc.modelspace()
-
-        # Основная пластина
-        base_points = [(0, 0), (300, 0), (300, 200), (0, 200)]
-        msp.add_lwpolyline(base_points, close=True)
-
-        # Вырез 50x50 в правом верхнем углу
-        cutout_points = [(250, 150), (300, 150), (300, 200), (250, 200)]
-        msp.add_lwpolyline(cutout_points, close=True)
-
-        # Отверстия
-        msp.add_circle((150, 100), radius=30)   # Ø60
-        msp.add_circle((50, 50), radius=5)      # Ø10
-        msp.add_circle((250, 50), radius=5)     # Ø10
-
-        # Расчёт длины реза (как было у тебя изначально)
-        outer_perimeter = 2 * (300 + 200)
-        cutout_perimeter = 2 * 50                    # 100 мм — оставляем как было
-        center_hole = 2 * math.pi * 30
-        mounting_holes = 4 * math.pi * 5
-
-        expected_length = outer_perimeter + cutout_perimeter + center_hole + mounting_holes
-
-        doc.saveas(self.output_dir / "10_complex_part.dxf")
-        print(f"✓ 10 Сложная деталь      → {expected_length:.3f} мм")
-        return expected_length
+        """10. Сложная деталь (комбинация элементов)"""
+    doc = ezdxf.new('R2010')
+    msp = doc.modelspace()
+    
+    # ✓ ПРАВИЛЬНО: L-образный единый контур
+    main_contour = [
+        (0, 0),      # Левый нижний
+        (300, 0),    # Правый нижний
+        (300, 150),  # Начало выреза
+        (250, 150),  # Угол выреза (горизонталь)
+        (250, 200),  # Угол выреза (вертикаль)
+        (0, 200)     # Левый верхний
+    ]
+    msp.add_lwpolyline(main_contour, close=True)
+    
+    # Центральное круглое отверстие Ø60
+    msp.add_circle((150, 100), radius=30)
+    
+    # Два крепёжных отверстия Ø10
+    msp.add_circle((50, 50), radius=5)
+    msp.add_circle((250, 50), radius=5)
+    
+    # Расчёт длины реза
+    main_perimeter = 300 + 150 + 50 + 50 + 250 + 200  # = 1000
+    center_hole = 2 * math.pi * 30
+    mounting_holes = 2 * 2 * math.pi * 5
+    
+    expected_length = main_perimeter + center_hole + mounting_holes
+    # = 1251.33 мм ✓
+    
+    doc.saveas(self.output_dir / "10_complex_part.dxf")
+    print(f"✓ Сложная деталь: длина реза = {expected_length:.3f} мм")
+    
+    return expected_length
 
 
 def main():
