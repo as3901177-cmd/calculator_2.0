@@ -85,11 +85,11 @@ class TestFixturesGenerator:
         return expected_length
 
     def create_hexagon(self):
-        """5. Шестигранник (размер под ключ 100 мм) — исправленная версия"""
+        """5. Шестигранник (размер под ключ 100 мм)"""
         doc = ezdxf.new('R2010')
         msp = doc.modelspace()
 
-        across_flats = 100.0                    # размер под ключ
+        across_flats = 100.0
         side_length = across_flats * math.sqrt(3) / 2
         radius = across_flats / math.sqrt(3)
 
@@ -159,7 +159,7 @@ class TestFixturesGenerator:
             x2, y2 = points[(i + 1) % n]
             outer_length += math.hypot(x2 - x1, y2 - y1)
 
-        holes_length = 4 * math.pi * 8
+        holes_length = 2 * 2 * math.pi * 8  # 2 отверстия, 2 стороны (внутр. и внешн.)
         expected_length = outer_length + holes_length
 
         doc.saveas(self.output_dir / "07_bracket_200x150.dxf")
@@ -229,8 +229,8 @@ class TestFixturesGenerator:
         msp.add_circle((50, 50), radius=5)
         msp.add_circle((250, 50), radius=5)
         
-        # Правильный расчёт длины реза
-        # 1. Периметр внешнего контура
+        # ТОЧНЫЙ расчёт длины реза
+        # 1. Периметр внешнего контура через hypot()
         main_perimeter = 0.0
         n = len(main_contour)
         for i in range(n):
@@ -239,8 +239,8 @@ class TestFixturesGenerator:
             main_perimeter += math.hypot(x2 - x1, y2 - y1)
         
         # 2. Отверстия (длина окружностей)
-        center_hole = 2 * math.pi * 30
-        mounting_holes = 2 * 2 * math.pi * 5
+        center_hole = 2 * math.pi * 30       # 188.495559 мм
+        mounting_holes = 2 * 2 * math.pi * 5  # 62.831853 мм
         
         expected_length = main_perimeter + center_hole + mounting_holes
         
