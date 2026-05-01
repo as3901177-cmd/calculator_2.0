@@ -21,45 +21,87 @@ from dxf_analyzer.calculators.registry import CalculatorRegistry
 
 def calculate_cut_length(file_path: str) -> float:
     """Функция расчёта длины реза с учётом перекрытий"""
+    import math
+    import ezdxf
+    
     try:
-        reader = DXFReader()
-        entities = reader.read(file_path)
+        doc = ezdxf.readfile(file_path)
+        msp = doc.modelspace()
         
-        # Разделяем полилинии и остальные объекты
         polylines = []
         circles = []
-        other_entities = []
+        total_length = 0.0
         
-        for entity in entities:
+        # Собираем все полилинии и окружности
+        for entity in msp:
             entity_type = entity.dxftype()
+            
             if entity_type in ('LWPOLYLINE', 'POLYLINE'):
                 polylines.append(entity)
             elif entity_type == 'CIRCLE':
-                circles.append(entity)
+                radius = entity.dxf.radius
+                total_length += 2 * math.pi * radius
             else:
-                other_entities.append(entity)
+                # Для других типов используем стандартный расчёт
+                from dxf_analyzer.calculators.registry import get_calculator
+                calculator = get_calculator(entity_type)
+                if calculator:
+                    total_length += calculator(entity)
         
-        total_length = 0.0
-        
-        # Обрабатываем неполилинейные объекты
-        registry = CalculatorRegistry()
-        for entity in other_entities:
-            entity_type = entity.dxftype()
-            calculator = registry.get_calculator(entity_type)
-            if calculator:
-                total_length += calculator.calculate_length(entity)
-        
-        # Обрабатываем окружности
-        for circle in circles:
-            if hasattr(circle, 'dxf') and hasattr(circle.dxf, 'radius'):
-                total_length += 2 * math.pi * circle.dxf.radius
-        
-        # Обрабатываем полилинии с вычитанием перекрытий
+        # Обрабатываем полилинии с вычитанием общих сегментов
         if polylines:
-            from dxf_analyzer.calculators.overlap_handler import OverlapHandler
-            # Подготавливаем данные для обработчика
-            entities_for_overlap = [('LWPOLYLINE', p, 0) for p in polylines]
-            polyline_length = OverlapHandler.calculate_entities_length(entities_for_overlap)
+            # Собираем все уникальные сегменты
+            all_segments = {}
+            
+            for polyline in polylines:
+                # Получаем точки полилинии
+                if hasattr(polyline, 'get_points'):
+                    points = list(polyline.get_points('xy'))
+                else:
+                    points = []
+                    for point in polyline.points():
+                        if hasattr(point, 'x') and hasattr(point, 'y'):
+                            points.append((point.x, point.y))
+                        elif isinstance(point, (tuple, list)) and len(point) >= 2:
+                            points.append((point[0], point[1]))
+                
+                if len(points) < 2:
+                    continue
+                
+                # Определяем замкнутость
+                is_closed = polyline.closed if hasattr(polyline, 'closed') else False
+                
+                # Извлекаем сегменты
+                for i in range(len(points) - 1):
+                    p1 = points[i]
+                    p2 = points[i + 1]
+                    length = math.hypot(p2[0] - p1[0], p2[1] - p1[1])
+                    
+                    # Нормализуем сегмент (направление не важно)
+                    if (p1[0] < p2[0]) or (p1[0] == p2[0] and p1[1] < p2[1]):
+                        key = (round(p1[0], 6), round(p1[1], 6), round(p2[0], 6), round(p2[1], 6))
+                    else:
+                        key = (round(p2[0], 6), round(p2[1], 6), round(p1[0], 6), round(p1[1], 6))
+                    
+                    if key not in all_segments:
+                        all_segments[key] = length
+                
+                # Замыкающий сегмент для замкнутой полилинии
+                if is_closed and len(points) > 1:
+                    p1 = points[-1]
+                    p2 = points[0]
+                    length = math.hypot(p2[0] - p1[0], p2[1] - p1[1])
+                    
+                    if (p1[0] < p2[0]) or (p1[0] == p2[0] and p1[1] < p2[1]):
+                        key = (round(p1[0], 6), round(p1[1], 6), round(p2[0], 6), round(p2[1], 6))
+                    else:
+                        key = (round(p2[0], 6), round(p2[1], 6), round(p1[0], 6), round(p1[1], 6))
+                    
+                    if key not in all_segments:
+                        all_segments[key] = length
+            
+            # Суммируем уникальные сегменты
+            polyline_length = sum(all_segments.values())
             total_length += polyline_length
         
         return total_length
