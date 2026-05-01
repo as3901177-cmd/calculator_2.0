@@ -141,9 +141,13 @@ def _process_file(uploaded_file):
 
 
 def _calculate_statistics(objects_data):
-    """Расчёт статистики по объектам"""
+    """Расчёт статистики по объектам с учётом перекрытий"""
     stats = {}
-    total_length = 0.0
+    
+    # Собираем данные для обработчика перекрытий
+    from ...calculators.overlap_handler import OverlapHandler
+    
+    entities_for_overlap = []
     
     for obj in objects_data:
         # Статистика по типам
@@ -161,7 +165,12 @@ def _calculate_statistics(objects_data):
             'length': obj.length
         })
         
-        total_length += obj.length
+        # Собираем для обработки перекрытий
+        entities_for_overlap.append((obj.entity_type, obj.entity, obj.length))
+    
+    # Используем OverlapHandler для правильного расчёта общей длины
+    # с учётом перекрывающихся сегментов (общие стороны квадрата и L-образной рамы)
+    total_length = OverlapHandler.calculate_entities_length(entities_for_overlap)
     
     # Статистика по цветам
     color_stats = analyze_colors(objects_data)
