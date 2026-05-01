@@ -6,6 +6,7 @@
 import streamlit as st
 import json
 import time
+import math
 from pathlib import Path
 import sys
 
@@ -19,23 +20,50 @@ from dxf_analyzer.calculators.registry import CalculatorRegistry
 
 
 def calculate_cut_length(file_path: str) -> float:
-    """Функция расчёта длины реза"""
+    """Функция расчёта длины реза с учётом перекрытий"""
     try:
         reader = DXFReader()
         entities = reader.read(file_path)
         
-        registry = CalculatorRegistry()
-        total_length = 0.0
+        # Разделяем полилинии и остальные объекты
+        polylines = []
+        circles = []
+        other_entities = []
         
         for entity in entities:
             entity_type = entity.dxftype()
+            if entity_type in ('LWPOLYLINE', 'POLYLINE'):
+                polylines.append(entity)
+            elif entity_type == 'CIRCLE':
+                circles.append(entity)
+            else:
+                other_entities.append(entity)
+        
+        total_length = 0.0
+        
+        # Обрабатываем неполилинейные объекты
+        registry = CalculatorRegistry()
+        for entity in other_entities:
+            entity_type = entity.dxftype()
             calculator = registry.get_calculator(entity_type)
-            
             if calculator:
-                length = calculator.calculate_length(entity)
-                total_length += length
+                total_length += calculator.calculate_length(entity)
+        
+        # Обрабатываем окружности
+        for circle in circles:
+            if hasattr(circle, 'dxf') and hasattr(circle.dxf, 'radius'):
+                total_length += 2 * math.pi * circle.dxf.radius
+        
+        # Обрабатываем полилинии с вычитанием перекрытий
+        if polylines:
+            from dxf_analyzer.calculators.overlap_handler import OverlapHandler
+            # Подготавливаем данные для обработчика
+            entities_for_overlap = [('LWPOLYLINE', p, 0) for p in polylines]
+            polyline_length = OverlapHandler.calculate_entities_length(entities_for_overlap)
+            total_length += polyline_length
         
         return total_length
+        
     except Exception as e:
         raise Exception(f"Ошибка расчёта: {str(e)}")
 
