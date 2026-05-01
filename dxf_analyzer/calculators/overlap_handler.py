@@ -5,7 +5,15 @@
 from typing import List, Any, Tuple, Dict
 import math
 
-from ..core.config import TOLERANCE
+# Исправленный импорт
+try:
+    from dxf_analyzer.core.config import TOLERANCE
+except ImportError:
+    try:
+        from ...core.config import TOLERANCE
+    except ImportError:
+        # Значение по умолчанию, если импорт не удался
+        TOLERANCE = 0.1
 
 
 class OverlapHandler:
@@ -51,22 +59,20 @@ class OverlapHandler:
         if not polylines:
             return 0.0
         
-        # Собираем все сегменты со всех полилиний
-        all_segments = []
+        # Собираем все уникальные сегменты (исправлено: сразу в словарь)
+        segment_map = {}
+        
         for polyline in polylines:
             segments = OverlapHandler._extract_segments(polyline)
-            all_segments.extend(segments)
-        
-        # Группируем сегменты по ключу (направление не важно)
-        segment_map = {}
-        for seg in all_segments:
-            key = OverlapHandler._get_segment_key(seg)
             
-            if key not in segment_map:
-                segment_map[key] = seg
+            for seg in segments:
+                key = OverlapHandler._get_segment_key(seg)
+                
+                if key not in segment_map:
+                    segment_map[key] = seg['length']
         
         # Суммируем уникальные сегменты
-        total = sum(seg['length'] for seg in segment_map.values())
+        total = sum(segment_map.values())
         
         return total
     
@@ -76,20 +82,24 @@ class OverlapHandler:
         segments = []
         
         # Получаем координаты точек
+        points = []
+        
         if hasattr(polyline, 'get_points'):
-            points = list(polyline.get_points('xy'))
-        elif hasattr(polyline, 'points'):
-            pts = list(polyline.points())
-            points = []
+            # Для LWPOLYLINE
+            pts = list(polyline.get_points('xy'))
             for p in pts:
+                if isinstance(p, (tuple, list)) and len(p) >= 2:
+                    points.append((float(p[0]), float(p[1])))
+                elif hasattr(p, 'x') and hasattr(p, 'y'):
+                    points.append((float(p.x), float(p.y)))
+        
+        elif hasattr(polyline, 'points'):
+            # Для POLYLINE
+            for p in polyline.points():
                 if hasattr(p, 'x') and hasattr(p, 'y'):
-                    points.append((p.x, p.y))
+                    points.append((float(p.x), float(p.y)))
                 elif isinstance(p, (tuple, list)) and len(p) >= 2:
-                    points.append((p[0], p[1]))
-                else:
-                    return segments
-        else:
-            return segments
+                    points.append((float(p[0]), float(p[1])))
         
         if len(points) < 2:
             return segments
@@ -103,14 +113,8 @@ class OverlapHandler:
         
         # Извлекаем сегменты
         for i in range(len(points) - 1):
-            p1 = points[i]
-            p2 = points[i + 1]
-            
-            x1 = p1[0] if isinstance(p1, (tuple, list)) else p1.x
-            y1 = p1[1] if isinstance(p1, (tuple, list)) else p1.y
-            x2 = p2[0] if isinstance(p2, (tuple, list)) else p2.x
-            y2 = p2[1] if isinstance(p2, (tuple, list)) else p2.y
-            
+            x1, y1 = points[i]
+            x2, y2 = points[i + 1]
             length = math.hypot(x2 - x1, y2 - y1)
             
             if length > TOLERANCE:
@@ -122,14 +126,8 @@ class OverlapHandler:
         
         # Замыкающий сегмент
         if is_closed and len(points) > 1:
-            p1 = points[-1]
-            p2 = points[0]
-            
-            x1 = p1[0] if isinstance(p1, (tuple, list)) else p1.x
-            y1 = p1[1] if isinstance(p1, (tuple, list)) else p1.y
-            x2 = p2[0] if isinstance(p2, (tuple, list)) else p2.x
-            y2 = p2[1] if isinstance(p2, (tuple, list)) else p2.y
-            
+            x1, y1 = points[-1]
+            x2, y2 = points[0]
             length = math.hypot(x2 - x1, y2 - y1)
             
             if length > TOLERANCE:
@@ -144,14 +142,17 @@ class OverlapHandler:
     @staticmethod
     def _get_segment_key(segment: Dict) -> tuple:
         """Уникальный ключ сегмента (независимо от направления)"""
-        p1 = segment['p1']
-        p2 = segment['p2']
+        x1, y1 = segment['p1']
+        x2, y2 = segment['p2']
         
-        x1, y1 = p1[0], p1[1]
-        x2, y2 = p2[0], p2[1]
+        # Округляем для точности
+        x1 = round(x1, 6)
+        y1 = round(y1, 6)
+        x2 = round(x2, 6)
+        y2 = round(y2, 6)
         
         # Нормализуем направление (меньшая точка первой)
-        if (x1 < x2 - TOLERANCE) or (abs(x1 - x2) <= TOLERANCE and y1 < y2 - TOLERANCE):
-            return (round(x1, 6), round(y1, 6), round(x2, 6), round(y2, 6))
+        if (x1 < x2) or (x1 == x2 and y1 < y2):
+            return (x1, y1, x2, y2)
         else:
-            return (round(x2, 6), round(y2, 6), round(x1, 6), round(y1, 6))
+            return (x2, y2, x1, y1)
