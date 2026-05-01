@@ -208,39 +208,46 @@ class TestFixturesGenerator:
 
     def create_complex_part(self):
         """10. Сложная деталь (комбинация элементов)"""
-    doc = ezdxf.new('R2010')
-    msp = doc.modelspace()
-    
-    # ✓ ПРАВИЛЬНО: L-образный единый контур
-    main_contour = [
-        (0, 0),      # Левый нижний
-        (300, 0),    # Правый нижний
-        (300, 150),  # Начало выреза
-        (250, 150),  # Угол выреза (горизонталь)
-        (250, 200),  # Угол выреза (вертикаль)
-        (0, 200)     # Левый верхний
-    ]
-    msp.add_lwpolyline(main_contour, close=True)
-    
-    # Центральное круглое отверстие Ø60
-    msp.add_circle((150, 100), radius=30)
-    
-    # Два крепёжных отверстия Ø10
-    msp.add_circle((50, 50), radius=5)
-    msp.add_circle((250, 50), radius=5)
-    
-    # Расчёт длины реза
-    main_perimeter = 300 + 150 + 50 + 50 + 250 + 200  # = 1000
-    center_hole = 2 * math.pi * 30
-    mounting_holes = 2 * 2 * math.pi * 5
-    
-    expected_length = main_perimeter + center_hole + mounting_holes
-    # = 1251.33 мм ✓
-    
-    doc.saveas(self.output_dir / "10_complex_part.dxf")
-    print(f"✓ Сложная деталь: длина реза = {expected_length:.3f} мм")
-    
-    return expected_length
+        doc = ezdxf.new('R2010')
+        msp = doc.modelspace()
+        
+        # L-образный единый контур
+        main_contour = [
+            (0, 0),      # Левый нижний
+            (300, 0),    # Правый нижний
+            (300, 150),  # Начало выреза
+            (250, 150),  # Угол выреза (горизонталь)
+            (250, 200),  # Угол выреза (вертикаль)
+            (0, 200)     # Левый верхний
+        ]
+        msp.add_lwpolyline(main_contour, close=True)
+        
+        # Центральное круглое отверстие Ø60
+        msp.add_circle((150, 100), radius=30)
+        
+        # Два крепёжных отверстия Ø10
+        msp.add_circle((50, 50), radius=5)
+        msp.add_circle((250, 50), radius=5)
+        
+        # Правильный расчёт длины реза
+        # 1. Периметр внешнего контура
+        main_perimeter = 0.0
+        n = len(main_contour)
+        for i in range(n):
+            x1, y1 = main_contour[i]
+            x2, y2 = main_contour[(i + 1) % n]
+            main_perimeter += math.hypot(x2 - x1, y2 - y1)
+        
+        # 2. Отверстия (длина окружностей)
+        center_hole = 2 * math.pi * 30
+        mounting_holes = 2 * 2 * math.pi * 5
+        
+        expected_length = main_perimeter + center_hole + mounting_holes
+        
+        doc.saveas(self.output_dir / "10_complex_part.dxf")
+        print(f"✓ 10 Сложная деталь      → {expected_length:.3f} мм")
+        
+        return expected_length
 
 
 def main():
