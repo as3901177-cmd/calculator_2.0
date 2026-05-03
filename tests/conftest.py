@@ -14,6 +14,12 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 
+@pytest.fixture
+def fixtures_dir():
+    """Возвращает путь к директории с тестовыми фикстурами"""
+    return Path(__file__).parent / "fixtures"
+
+
 def pytest_configure(config):
     """Вызывается при инициализации pytest"""
     print(f"\n{Colors.BOLD}{Colors.CYAN}Инициализация тестов DXF Analyzer...{Colors.RESET}\n")
