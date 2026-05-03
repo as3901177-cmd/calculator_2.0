@@ -313,13 +313,13 @@ class TestComplexShapes:
             raise
 
 
-# ✅ ГЛАВНЫЙ ПАРАМЕТРИЗОВАННЫЙ ТЕСТ - проверяет все 10 фигур
-@pytest.mark.parametrize("test_id", range(1, 11))
+# ✅ ГЛАВНЫЙ ПАРАМЕТРИЗОВАННЫЙ ТЕСТ - проверяет все 11 фигур
+@pytest.mark.parametrize("test_id", range(1, 12))  # было range(1, 11) -> теперь 1..11
 def test_all_shapes(test_id, expected_results, fixtures_dir):
     """
-    Параметризованный тест всех фигур (ID 1-10)
+    Параметризованный тест всех фигур (ID 1-11)
     
-    Запускается 10 раз с разными test_id:
+    Запускается 11 раз с разными test_id:
     1. Круг Ø200мм
     2. Прямоугольник 300×200мм
     3. Квадрат 250×250мм
@@ -330,6 +330,7 @@ def test_all_shapes(test_id, expected_results, fixtures_dir):
     8. Кольцо Ø200/Ø100мм
     9. Продолговатое отверстие 200×50мм
     10. Сложная деталь (квадрат + L-рама)
+    11. Эллипс 100×50мм           <-- добавлено
     """
     test_case = [tc for tc in expected_results if tc['id'] == test_id][0]
     file_path = fixtures_dir / test_case['file']
