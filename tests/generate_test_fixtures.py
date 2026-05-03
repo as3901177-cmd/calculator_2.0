@@ -1,6 +1,6 @@
 """
 Генератор эталонных DXF файлов для тестирования расчёта длины реза
-10 самых частых фигур в плазменной резке металла
+10 самых частых фигур в плазменной резке металла + эллипс
 """
 
 import ezdxf
@@ -29,6 +29,7 @@ class TestFixturesGenerator:
         self.create_ring()
         self.create_slot()
         self.create_complex_part()
+        self.create_ellipse()          # <-- ДОБАВЛЕНО
 
         print(f"\n✓ Все тестовые файлы успешно созданы в папке:\n   {self.output_dir.resolve()}")
 
@@ -282,6 +283,33 @@ class TestFixturesGenerator:
         doc.saveas(self.output_dir / "10_complex_part.dxf")
         print(f"✓ 10 Сложная деталь (2 изделия) → {expected_length:.3f} мм")
         
+        return expected_length
+
+    # ================================================================
+    # НОВЫЙ МЕТОД: ЭЛЛИПС
+    # ================================================================
+    def create_ellipse(self):
+        """11. Эллипс с полуосями 100 и 50 мм (замкнутый)"""
+        doc = ezdxf.new('R2010')
+        msp = doc.modelspace()
+
+        # major_axis вектор, ratio = b/a
+        a = 100.0  # длина большой полуоси
+        b = 50.0   # длина малой полуоси
+        msp.add_ellipse(
+            center=(0, 0),
+            major_axis=(a, 0),
+            ratio=b/a,
+            start_param=0,
+            end_param=2 * math.pi
+        )
+
+        # Формула Рамануджана для периметра эллипса (как в ellipse_calculator.py)
+        h = ((a - b) ** 2) / ((a + b) ** 2)
+        expected_length = math.pi * (a + b) * (1 + (3 * h) / (10 + math.sqrt(4 - 3 * h)))
+
+        doc.saveas(self.output_dir / "11_ellipse_100x50.dxf")
+        print(f"✓ 11 Эллипс 100×50       → {expected_length:.3f} мм")
         return expected_length
 
 
