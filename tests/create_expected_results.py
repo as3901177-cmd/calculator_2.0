@@ -10,6 +10,12 @@ from pathlib import Path
 def create_expected_results():
     """Генерация эталонных данных для тестов"""
    
+    # Вычисление периметра эллипса (формула Рамануджана)
+    a = 100.0  # большая полуось
+    b = 50.0   # малая полуось
+    h = ((a - b) ** 2) / ((a + b) ** 2)
+    ellipse_perimeter = math.pi * (a + b) * (1 + (3 * h) / (10 + math.sqrt(4 - 3 * h)))
+
     test_cases = [
         {
             "id": 1,
@@ -110,7 +116,18 @@ def create_expected_results():
             ),
             "tolerance": 1.0,
             "category": "complex"
+        },
+        # -------------------- НОВЫЙ ТЕСТ-КЕЙС --------------------
+        {
+            "id": 11,
+            "name": "Эллипс (овал 100x50)",
+            "file": "11_ellipse_100x50.dxf",
+            "description": "Замкнутый эллипс с полуосями 100 и 50 мм",
+            "expected_length": ellipse_perimeter,
+            "tolerance": 0.05,
+            "category": "basic"
         }
+        # ---------------------------------------------------------
     ]
    
     output_dir = Path("tests/fixtures")
