@@ -259,6 +259,18 @@ class HTMLReporter:
         passed = sum(1 for r in self.results if r.passed)
         total = len(self.results)
         
+        # Безопасное вычисление процентов
+        if total > 0:
+            success_rate = passed / total
+            success_percent = success_rate * 100
+            progress_width = success_percent
+            success_color = '#28a745' if success_rate > 0.9 else '#ffc107'
+        else:
+            success_rate = 0
+            success_percent = 0
+            progress_width = 0
+            success_color = '#6c757d'
+        
         rows = "\n".join(self._generate_row(r) for r in self.results)
         
         return f"""
@@ -406,15 +418,15 @@ class HTMLReporter:
             </div>
             <div class="stat-card">
                 <h3>Успешность</h3>
-                <div class="value" style="color: {'#28a745' if passed/total > 0.9 else '#ffc107'}">
-                    {passed/total*100:.1f}%
+                <div class="value" style="color: {success_color}">
+                    {success_percent:.1f}%
                 </div>
             </div>
         </div>
         
         <div style="padding: 0 30px;">
             <div class="progress-bar">
-                <div class="progress-fill" style="width: {passed/total*100}%">
+                <div class="progress-fill" style="width: {progress_width}%">
                     {passed}/{total}
                 </div>
             </div>
