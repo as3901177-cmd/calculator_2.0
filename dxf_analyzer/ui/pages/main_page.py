@@ -171,6 +171,14 @@ def _calculate_statistics(objects_data):
     # Используем OverlapHandler для правильного расчёта общей длины
     # с учётом перекрывающихся сегментов (общие стороны квадрата и L-образной рамы)
     total_length = OverlapHandler.calculate_entities_length(entities_for_overlap)
+
+    # === ДИАГНОСТИКА (можно удалить после проверки) ===
+    # Вычисляем сырую сумму длин без обработки перекрытий
+    raw_sum = sum(obj.length for obj in objects_data)
+    print(f"\n[DEBUG OverlapHandler] Сырая сумма длин    : {raw_sum:.2f} мм")
+    print(f"[DEBUG OverlapHandler] Итоговая длина (Overlap): {total_length:.2f} мм")
+    print(f"[DEBUG OverlapHandler] Уменьшение за счёт перекрытий: {raw_sum - total_length:.2f} мм\n")
+    # ====================================================
     
     # Статистика по цветам
     color_stats = analyze_colors(objects_data)
