@@ -6,13 +6,8 @@
     - координаты концов (с точностью до 0.001 мм)
     - |bulge| (прямая и дуга между теми же точками — разные сегменты)
 
-Исправления относительно оригинала:
-    - bulge включён в ключ сегмента (критический баг)
-    - Точность round(..., 3) вместо round(..., 6)
-    - Нет дублирования bulge_arc_length (импорт из geometry_utils)
-    - Разделение по dxftype() вместо hasattr-проверок
-    - Типизация через аннотации
-    - **Обрабатываются все объекты (LINE, POLYLINE, LWPOLYLINE), а не только полилинии**
+Поддерживаются типы: LINE, LWPOLYLINE, POLYLINE.
+CIRCLE, ARC, SPLINE и т.д. не анализируются на перекрытия.
 """
 
 import math
@@ -25,42 +20,22 @@ try:
 except ImportError:
     TOLERANCE = 0.1
 
-# Тип ключа сегмента: (x1, y1, x2, y2, abs_bulge)
 SegmentKey = Tuple[float, float, float, float, float]
-
-# Тип входных данных для calculate_entities_length
 EntityData = Tuple[str, Any, float]
 
 
 class OverlapHandler:
     """
-    Вычитание общих сегментов между любыми объектами, а не только полилиниями.
-
-    Пример использования:
-        entities = [
-            ('LWPOLYLINE', entity1, 500.0),
-            ('LINE',       line_entity, 100.0),
-            ('CIRCLE',     circle_entity, 314.15),
-        ]
-        total = OverlapHandler.calculate_entities_length(entities)
+    Вычитание общих сегментов между любыми линейными объектами.
     """
 
     @staticmethod
     def calculate_entities_length(entities: List[EntityData]) -> float:
         """
-        Рассчитать общую длину всех объектов с учётом перекрытий.
+        Рассчитать общую длину с учётом перекрытий.
 
-        Общие сегменты между любыми объектами, включая LINE,
-        вычитаются один раз. CIRCLE, ARC и другие «нелинейные» типы
-        пока не анализируются на перекрытия и просто суммируются.
-
-        Args:
-            entities: Список (entity_type, entity, calculated_length)
-                      calculated_length используется только для объектов,
-                      которые не дают сегментов для дедупликации.
-
-        Returns:
-            Суммарная длина в мм
+        Для LINE, LWPOLYLINE, POLYLINE извлекаются сегменты и дедуплицируются.
+        Остальные типы (CIRCLE, ARC и т.п.) используют переданную длину без изменений.
         """
         segment_map: Dict[SegmentKey, float] = {}
         non_segment_length = 0.0
@@ -69,13 +44,10 @@ class OverlapHandler:
             segments = OverlapHandler._extract_segments_from_entity(entity_type, entity)
 
             if segments is not None:
-                # Объект может быть разбит на сегменты – дедуплицируем
                 for key, seg_length in segments:
-                    # Первое вхождение – добавляем, повторные – перекрытие
                     if key not in segment_map:
                         segment_map[key] = seg_length
             else:
-                # Объект не даёт сегментов (например, CIRCLE) – используем готовую длину
                 non_segment_length += length
 
         unique_length = sum(segment_map.values())
@@ -83,17 +55,7 @@ class OverlapHandler:
 
     @staticmethod
     def _extract_segments_from_entity(entity_type: str, entity: Any) -> Optional[List[Tuple[SegmentKey, float]]]:
-        """
-        Извлечь сегменты из объекта заданного типа.
-
-        Возвращает None, если этот тип не участвует в дедупликации
-        (тогда нужно использовать переданную длину как есть).
-
-        Поддерживаются:
-            LINE          – один прямолинейный сегмент
-            LWPOLYLINE    – сегменты с учётом bulge
-            POLYLINE      – сегменты 3D полилинии (bulge=0)
-        """
+        """Извлечь сегменты из объекта. Возвращает None, если тип не поддерживается."""
         if entity_type == 'LINE':
             return OverlapHandler._segments_line(entity)
         elif entity_type == 'LWPOLYLINE':
@@ -101,17 +63,11 @@ class OverlapHandler:
         elif entity_type == 'POLYLINE':
             return OverlapHandler._segments_polyline(entity)
         else:
-            # Для CIRCLE, ARC, SPLINE и т.д. пока не умеем
-            # вычитать перекрытия – возвращаем None,
-            # чтобы их длина была учтена отдельно
             return None
 
-    # ------------------------------------------------------------------
-    # Извлечение сегментов из LINE
-    # ------------------------------------------------------------------
     @staticmethod
     def _segments_line(entity: Any) -> List[Tuple[SegmentKey, float]]:
-        """LINE как один прямолинейный сегмент (bulge=0)."""
+        """LINE как один прямолинейный сегмент."""
         try:
             start = entity.dxf.start
             end = entity.dxf.end
@@ -128,19 +84,17 @@ class OverlapHandler:
         key = normalize_segment_key(x1, y1, x2, y2, bulge=0.0)
         return [(key, length)]
 
-    # ------------------------------------------------------------------
-    # Сегменты LWPOLYLINE (взято из текущего кода)
-    # ------------------------------------------------------------------
     @staticmethod
     def _segments_lwpolyline(polyline: Any) -> List[Tuple[SegmentKey, float]]:
-        segments: List[Tuple[SegmentKey, float]] = []
+        """Сегменты LWPOLYLINE с учётом bulge."""
+        segments = []
         try:
             points = list(polyline.get_points('xyb'))
         except Exception:
             return segments
         if len(points) < 2:
             return segments
-        is_closed: bool = getattr(polyline, 'closed', False)
+        is_closed = getattr(polyline, 'closed', False)
         for i in range(len(points) - 1):
             x1 = float(points[i][0])
             y1 = float(points[i][1])
@@ -163,19 +117,17 @@ class OverlapHandler:
                 segments.append((key, length))
         return segments
 
-    # ------------------------------------------------------------------
-    # Сегменты POLYLINE (3D)
-    # ------------------------------------------------------------------
     @staticmethod
     def _segments_polyline(polyline: Any) -> List[Tuple[SegmentKey, float]]:
-        segments: List[Tuple[SegmentKey, float]] = []
+        """Сегменты 3D POLYLINE (bulge=0)."""
+        segments = []
         try:
             pts = list(polyline.points())
         except Exception:
             return segments
         if len(pts) < 2:
             return segments
-        is_closed: bool = getattr(polyline, 'is_closed', False)
+        is_closed = getattr(polyline, 'is_closed', False)
         for i in range(len(pts) - 1):
             p1, p2 = pts[i], pts[i + 1]
             x1, y1 = float(p1.x), float(p1.y)
@@ -193,21 +145,3 @@ class OverlapHandler:
                 key = normalize_segment_key(x1, y1, x2, y2, bulge=0.0)
                 segments.append((key, length))
         return segments
-
-    # Старые методы _process_polylines и _extract_segments (полиморфные)
-    # заменены на новый calculate_entities_length, использующий
-    # _extract_segments_from_entity. Оставлены для обратной совместимости
-    # на случай, если где-то вызываются напрямую, но теперь они не нужны.
-    @staticmethod
-    def _process_polylines(polylines: List[Any]) -> float:
-        """Устаревший метод, теперь не используется."""
-        return 0.0
-
-    @staticmethod
-    def _extract_segments(polyline: Any) -> List[Tuple[SegmentKey, float]]:
-        """Устаревший метод, перенаправлен на _extract_segments_from_entity."""
-        try:
-            entity_type = polyline.dxftype()
-        except Exception:
-            entity_type = ''
-        return OverlapHandler._extract_segments_from_entity(entity_type, polyline) or []
