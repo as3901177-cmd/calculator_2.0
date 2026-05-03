@@ -17,6 +17,49 @@ sys.path.insert(0, str(project_root))
 def pytest_configure(config):
     """Вызывается при инициализации pytest"""
     print(f"\n{Colors.BOLD}{Colors.CYAN}Инициализация тестов DXF Analyzer...{Colors.RESET}\n")
+    
+    # Автоматическая генерация тестовых данных при первом запуске
+    _ensure_test_fixtures()
+
+
+def _ensure_test_fixtures():
+    """Проверка и создание тестовых данных если их нет"""
+    fixtures_dir = Path(__file__).parent / "fixtures"
+    expected_results_file = fixtures_dir / "expected_results.json"
+    
+    # Проверяем наличие эталонных данных
+    if not expected_results_file.exists():
+        print(f"{Colors.WARNING}⚠️  Эталонные данные не найдены. Генерация...{Colors.RESET}")
+        _generate_test_data()
+        print(f"{Colors.SUCCESS}✅ Эталонные данные созданы!{Colors.RESET}\n")
+    
+    # Проверяем наличие DXF файлов (хотя бы первого)
+    first_dxf = fixtures_dir / "01_circle_d200.dxf"
+    if not first_dxf.exists():
+        print(f"{Colors.WARNING}⚠️  Тестовые DXF файлы не найдены. Генерация...{Colors.RESET}")
+        _generate_dxf_files()
+        print(f"{Colors.SUCCESS}✅ Тестовые DXF файлы созданы!{Colors.RESET}\n")
+
+
+def _generate_test_data():
+    """Генерация файла expected_results.json"""
+    try:
+        from tests.create_expected_results import create_expected_results
+        create_expected_results()
+    except Exception as e:
+        print(f"{Colors.ERROR}❌ Ошибка генерации эталонных данных: {e}{Colors.RESET}")
+        raise
+
+
+def _generate_dxf_files():
+    """Генерация тестовых DXF файлов"""
+    try:
+        from tests.generate_test_fixtures import TestFixturesGenerator
+        generator = TestFixturesGenerator()
+        generator.create_all_fixtures()
+    except Exception as e:
+        print(f"{Colors.ERROR}❌ Ошибка генерации DXF файлов: {e}{Colors.RESET}")
+        raise
 
 
 def pytest_collection_finish(session):
