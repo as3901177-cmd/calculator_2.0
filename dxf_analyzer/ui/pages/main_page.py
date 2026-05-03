@@ -4,7 +4,7 @@
 
 import streamlit as st
 import pandas as pd
-from typing import Dict, Any
+from typing import Any
 
 from ...core.config import install_dependencies, MAX_FILE_SIZE_MB
 from ...core.errors import ErrorCollector
@@ -145,9 +145,10 @@ def _calculate_statistics(objects_data):
     stats = {}
     
     # Собираем данные для обработчика перекрытий
-    from ...calculators.overlap_handler import OverlapHandler
-    
-    entities_for_overlap = []
+    from ...calculators.overlap_handler import OverlapHandler, EntityData
+    from ...calculators.geometry_utils import bulge_arc_length, normalize_segment_key
+
+    entities_for_overlap: list[EntityData] = []
     
     for obj in objects_data:
         # Статистика по типам
@@ -168,19 +169,68 @@ def _calculate_statistics(objects_data):
         # Собираем для обработки перекрытий
         entities_for_overlap.append((obj.entity_type, obj.entity, obj.length))
     
-    # Используем OverlapHandler для правильного расчёта общей длины
+    # --- Расширенная диагностика работы OverlapHandler ---
+    # Разделим объекты на полилинии и остальные
+    polylines = []
+    other_length = 0.0
+    for entity_type, entity, length in entities_for_overlap:
+        if entity_type in ('LWPOLYLINE', 'POLYLINE'):
+            polylines.append(entity)
+        else:
+            other_length += length
+
+    st.info(f"""
+    🔧 **Диагностика входных данных**
+    *   Всего объектов: {len(entities_for_overlap)}
+    *   Из них полилиний (LWPOLYLINE/POLYLINE): {len(polylines)}
+    *   Сумма длин неполилиний (круги, дуги и т.п.): {other_length:.2f} мм
+    """)
+
+    # Анализируем полилинии вручную
+    if polylines:
+        segment_map = {}
+        for polyline in polylines:
+            for key, length in OverlapHandler._extract_segments(polyline):
+                if key not in segment_map:
+                    segment_map[key] = length
+                else:
+                    # Уже есть такой сегмент — дубликат
+                    pass
+
+        unique_length = sum(segment_map.values())
+        total_poly_raw = sum(obj.length for obj in objects_data
+                             if obj.entity_type in ('LWPOLYLINE', 'POLYLINE'))
+
+        st.info(f"""
+        🔧 **Детали по полилиниям**
+        *   Суммарная длина полилиний (сырая, из объектов): {total_poly_raw:.2f} мм
+        *   Найдено уникальных сегментов: **{len(segment_map)}**
+        *   Суммарная длина уникальных сегментов: **{unique_length:.2f} мм**
+        *   Разница (перекрытия внутри полилиний): {total_poly_raw - unique_length:.2f} мм
+        """)
+
+        # Покажем список сегментов (первые 15)
+        segment_list = []
+        for i, (key, seg_len) in enumerate(segment_map.items()):
+            if i >= 15:
+                segment_list.append("...")
+                break
+            segment_list.append(f"({key[0]:.1f}, {key[1]:.1f})-({key[2]:.1f}, {key[3]:.1f}) b={key[4]:.2f} → {seg_len:.2f}")
+        st.expander("Примеры уникальных сегментов", expanded=False).write("\n".join(segment_list))
+
+    # Используем OverlapHandler для итогового расчёта
     total_length = OverlapHandler.calculate_entities_length(entities_for_overlap)
 
-    # ===================== ДИАГНОСТИКА НА СТРАНИЦЕ =====================
+    # Итоговая диагностика
     raw_sum = sum(obj.length for obj in objects_data)
+    overlap_diff = raw_sum - total_length
     st.info(f"""
-    🔧 **Диагностика расчёта длины реза (OverlapHandler)**
-    *   Сырая сумма длин объектов: **{raw_sum:.2f} мм**
-    *   Итоговая длина (после вычета перекрытий): **{total_length:.2f} мм**
-    *   Величина перекрытий (исключённые общие стороны): **{raw_sum - total_length:.2f} мм**
+    🔧 **Итоговый расчёт**
+    *   Сырая сумма всех длин: **{raw_sum:.2f} мм**
+    *   Результат OverlapHandler: **{total_length:.2f} мм**
+    *   Уменьшение за счёт перекрытий: **{overlap_diff:.2f} мм**
     """)
-    # ====================================================================
-    
+
     # Статистика по цветам
     color_stats = analyze_colors(objects_data)
     
