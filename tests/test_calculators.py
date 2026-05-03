@@ -1,6 +1,6 @@
 # tests/test_calculators.py
 """
-Модульные тесты для отдельных калькуляторов
+Модульные тесты для отдельных калькуляторов (только 2D)
 """
 
 import pytest
@@ -10,7 +10,7 @@ import ezdxf
 from dxf_analyzer.calculators.circle_calculator import CircleCalculator
 from dxf_analyzer.calculators.line_calculator import LineCalculator
 from dxf_analyzer.calculators.arc_calculator import ArcCalculator
-from dxf_analyzer.calculators.polyline_calculator import PolylineCalculator
+from dxf_analyzer.calculators.polyline_calculator import LWPolylineCalculator
 
 
 class TestCircleCalculator:
@@ -117,30 +117,30 @@ class TestArcCalculator:
         assert abs(length - expected) < 0.1
 
 
-class TestPolylineCalculator:
-    """Тесты для PolylineCalculator"""
-    
-    def test_closed_square(self):
-        """Замкнутый квадрат"""
+class TestLWPolylineCalculator:
+    """Тесты для LWPolylineCalculator (2D полилинии)"""
+
+    def test_closed_lwpolyline_square(self):
+        """Замкнутый квадрат (LWPOLYLINE)"""
         doc = ezdxf.new()
         msp = doc.modelspace()
         points = [(0, 0), (100, 0), (100, 100), (0, 100)]
         polyline = msp.add_lwpolyline(points, close=True)
         
-        calculator = PolylineCalculator()
+        calculator = LWPolylineCalculator()
         length = calculator.calculate(polyline)
         
         expected = 400.0
         assert abs(length - expected) < 0.01
-    
-    def test_open_polyline(self):
-        """Незамкнутая полилиния"""
+
+    def test_open_lwpolyline(self):
+        """Незамкнутая LWPOLYLINE"""
         doc = ezdxf.new()
         msp = doc.modelspace()
         points = [(0, 0), (100, 0), (100, 100)]
         polyline = msp.add_lwpolyline(points, close=False)
         
-        calculator = PolylineCalculator()
+        calculator = LWPolylineCalculator()
         length = calculator.calculate(polyline)
         
         expected = 200.0
