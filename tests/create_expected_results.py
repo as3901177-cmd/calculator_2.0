@@ -52,7 +52,8 @@ def create_expected_results():
             "name": "Шестигранник (гайка)",
             "file": "05_hexagon_s100.dxf",
             "description": "Шестигранник под ключ 100мм",
-            "expected_length": 100 * math.sqrt(3),        # ≈ 519.615 мм — ПРАВИЛЬНО
+            # Правильный периметр: 6 * (S / √3) = 2√3 * S = 200 * √3
+            "expected_length": 200 * math.sqrt(3),
             "tolerance": 0.5,
             "category": "basic"
         },
