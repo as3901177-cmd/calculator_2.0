@@ -2,12 +2,10 @@
 """
 Интеграционные тесты полного цикла обработки
 """
-
 import pytest
 from pathlib import Path
-
-from dxf_analyzer.parsers.dxf_reader import DXFReader
-from dxf_analyzer.calculators.registry import CalculatorRegistry
+import ezdxf  # ✅ Добавили ezdxf напрямую
+from dxf_analyzer.calculators.registry import get_calculator  # ✅ Используем функцию из registry
 
 
 class TestFullWorkflow:
@@ -20,19 +18,19 @@ class TestFullWorkflow:
         if not file_path.exists():
             pytest.skip("Тестовый файл не найден")
         
-        # Чтение
-        reader = DXFReader()
-        entities = reader.read(str(file_path))
+        # ✅ Чтение напрямую через ezdxf
+        doc = ezdxf.readfile(str(file_path))
+        msp = doc.modelspace()
+        entities = list(msp)
         
         assert len(entities) > 0, "Файл должен содержать сущности"
         
-        # Расчёт
-        registry = CalculatorRegistry()
-        total_length = sum(
-            registry.get_calculator(e.dxftype()).calculate_length(e)
-            for e in entities
-            if registry.get_calculator(e.dxftype())
-        )
+        # ✅ Расчёт через registry
+        total_length = 0.0
+        for entity in entities:
+            calculator = get_calculator(entity.dxftype())
+            if calculator:
+                total_length += calculator(entity)
         
         import math
         expected = 2 * math.pi * 100
@@ -45,8 +43,10 @@ class TestFullWorkflow:
         if not file_path.exists():
             pytest.skip("Тестовый файл не найден")
         
-        reader = DXFReader()
-        entities = reader.read(str(file_path))
+        # ✅ Чтение напрямую через ezdxf
+        doc = ezdxf.readfile(str(file_path))
+        msp = doc.modelspace()
+        entities = list(msp)
         
         # Должно быть 6 окружностей (внешняя + центр + 4 отверстия)
         circles = [e for e in entities if e.dxftype() == 'CIRCLE']
