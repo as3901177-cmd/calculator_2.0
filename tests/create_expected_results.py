@@ -10,11 +10,22 @@ from pathlib import Path
 def create_expected_results():
     """Генерация эталонных данных для тестов"""
    
-    # Вычисление периметра эллипса (формула Рамануджана)
-    a = 100.0  # большая полуось
-    b = 50.0   # малая полуось
-    h = ((a - b) ** 2) / ((a + b) ** 2)
-    ellipse_perimeter = math.pi * (a + b) * (1 + (3 * h) / (10 + math.sqrt(4 - 3 * h)))
+    # Численное интегрирование периметра эллипса с полуосями 100 и 50 мм
+    a = 100.0
+    b = 50.0
+    num_segments = 200
+    dt = 2 * math.pi / num_segments
+    t = 0.0
+    total = 0.0
+    x_prev = a * math.cos(t)
+    y_prev = b * math.sin(t)
+    for _ in range(num_segments):
+        t += dt
+        x_curr = a * math.cos(t)
+        y_curr = b * math.sin(t)
+        total += math.hypot(x_curr - x_prev, y_curr - y_prev)
+        x_prev, y_prev = x_curr, y_curr
+    ellipse_perimeter = total
 
     test_cases = [
         {
@@ -58,7 +69,6 @@ def create_expected_results():
             "name": "Шестигранник (гайка)",
             "file": "05_hexagon_s100.dxf",
             "description": "Шестигранник под ключ 100мм",
-            # Правильный периметр: 6 * (S / √3) = 2√3 * S = 200 * √3
             "expected_length": 200 * math.sqrt(3),
             "tolerance": 0.5,
             "category": "basic"
@@ -117,17 +127,15 @@ def create_expected_results():
             "tolerance": 1.0,
             "category": "complex"
         },
-        # -------------------- НОВЫЙ ТЕСТ-КЕЙС --------------------
         {
             "id": 11,
             "name": "Эллипс (овал 100x50)",
             "file": "11_ellipse_100x50.dxf",
             "description": "Замкнутый эллипс с полуосями 100 и 50 мм",
             "expected_length": ellipse_perimeter,
-            "tolerance": 0.05,
+            "tolerance": 0.01,   # <-- уменьшен до 0.01 мм
             "category": "basic"
         }
-        # ---------------------------------------------------------
     ]
    
     output_dir = Path("tests/fixtures")
