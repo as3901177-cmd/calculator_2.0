@@ -5,6 +5,7 @@
 
 import pytest
 import sys
+import json
 from pathlib import Path
 
 from tests.test_reporter import Colors
@@ -29,16 +30,36 @@ def pytest_configure(config):
 
 
 def _ensure_test_fixtures():
-    """Проверка и создание тестовых данных если их нет"""
+    """Проверка и создание тестовых данных если их нет или они устарели"""
     fixtures_dir = Path(__file__).parent / "fixtures"
     expected_results_file = fixtures_dir / "expected_results.json"
-    
-    # Проверяем наличие эталонных данных
+    need_regenerate = False
+
     if not expected_results_file.exists():
-        print(f"{Colors.WARNING}⚠️  Эталонные данные не найдены. Генерация...{Colors.RESET}")
+        need_regenerate = True
+    else:
+        # Загружаем актуальные эталоны из кода
+        from tests.create_expected_results import create_expected_results
+        fresh_cases = create_expected_results()  # возвращает список словарей
+        fresh_map = {case["id"]: case["expected_length"] for case in fresh_cases}
+
+        # Загружаем сохранённые эталоны
+        try:
+            with open(expected_results_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            stored_cases = data.get("test_cases", [])
+            stored_map = {case["id"]: case.get("expected_length") for case in stored_cases}
+
+            if stored_map != fresh_map:
+                need_regenerate = True
+        except (json.JSONDecodeError, KeyError, TypeError):
+            need_regenerate = True
+
+    if need_regenerate:
+        print(f"{Colors.WARNING}⚠️  Эталонные данные отсутствуют или устарели. Генерация...{Colors.RESET}")
         _generate_test_data()
-        print(f"{Colors.SUCCESS}✅ Эталонные данные созданы!{Colors.RESET}\n")
-    
+        print(f"{Colors.SUCCESS}✅ Эталонные данные созданы/обновлены!{Colors.RESET}\n")
+
     # Проверяем наличие DXF файлов (хотя бы первого)
     first_dxf = fixtures_dir / "01_circle_d200.dxf"
     if not first_dxf.exists():
@@ -83,8 +104,6 @@ def pytest_runtest_logreport(report):
         else:
             icon = f"{Colors.WARNING}⊘{Colors.RESET}"
         
-        # Эта информация уже выводится нашим репортером
-        # Но можем добавить дополнительные детали при необходимости
         pass
 
 
