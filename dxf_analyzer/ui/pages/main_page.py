@@ -4,6 +4,7 @@
 
 import streamlit as st
 import pandas as pd
+import math
 from typing import Any
 
 from ...core.config import install_dependencies, MAX_FILE_SIZE_MB
@@ -36,12 +37,10 @@ def render_main_page():
     st.title("📐 Анализатор Чертежей CAD Pro v24.0")
     st.markdown("**Профессиональный расчет длины реза для станков ЧПУ и лазерной резки**")
     
-    # Информационные секции
     _render_info_sections()
     
     st.markdown("---")
     
-    # Загрузка файла
     uploaded_file = st.file_uploader("📂 Загрузите чертеж в формате DXF", type=["dxf"])
     
     if uploaded_file is not None:
@@ -49,7 +48,6 @@ def render_main_page():
     else:
         _render_welcome_message()
     
-    # Футер
     _render_footer()
 
 
@@ -98,7 +96,6 @@ def _render_info_sections():
 
 def _process_file(uploaded_file):
     """Обработка загруженного DXF файла"""
-    # Проверка размера файла
     file_size_mb = uploaded_file.size / (1024 * 1024)
     if file_size_mb > MAX_FILE_SIZE_MB:
         st.error(f"❌ Файл слишком большой: {file_size_mb:.1f} МБ (максимум: {MAX_FILE_SIZE_MB} МБ)")
@@ -108,19 +105,10 @@ def _process_file(uploaded_file):
     
     with st.spinner('⏳ Обработка чертежа...'):
         try:
-            # Чтение DXF
             doc, temp_path = read_dxf_file(uploaded_file, collector)
-            
-            # Извлечение объектов
             objects_data = extract_entities(doc, collector)
-            
-            # Расчёт статистики
             stats, color_stats, total_length = _calculate_statistics(objects_data)
-            
-            # Подсчёт врезок
             piercing_count, piercing_details = count_piercings_advanced(objects_data, collector)
-            
-            # Отображение результатов
             show_error_report(collector)
             
             if not objects_data:
@@ -130,11 +118,9 @@ def _process_file(uploaded_file):
                     objects_data, total_length, piercing_count,
                     piercing_details, stats, color_stats, doc, collector
                 )
-        
         except Exception as e:
             collector.add_error('SYSTEM', 0, f"Критическая ошибка: {e}", type(e).__name__)
             show_error_report(collector)
-            
             import traceback
             with st.expander("🔍 Трассировка ошибки"):
                 st.code(traceback.format_exc())
@@ -144,14 +130,12 @@ def _calculate_statistics(objects_data):
     """Расчёт статистики по объектам с учётом перекрытий"""
     stats = {}
     
-    # Собираем данные для обработчика перекрытий
-    from ...calculators.overlap_handler import OverlapHandler, EntityData
-    from ...calculators.geometry_utils import bulge_arc_length, normalize_segment_key
-
-    entities_for_overlap: list[EntityData] = []
+    from ...calculators.overlap_handler import OverlapHandler
+    from ...calculators.geometry_utils import normalize_segment_key
+    
+    entities_for_overlap = []
     
     for obj in objects_data:
-        # Статистика по типам
         if obj.entity_type not in stats:
             stats[obj.entity_type] = {
                 'count': 0,
@@ -165,80 +149,50 @@ def _calculate_statistics(objects_data):
             'num': obj.num,
             'length': obj.length
         })
-        
         entities_for_overlap.append((obj.entity_type, obj.entity, obj.length))
     
-    # --- Расширенная диагностика типов объектов ---
-    type_counts = {}
-    for obj in objects_data:
-        t = obj.entity_type
-        type_counts[t] = type_counts.get(t, 0) + 1
-    st.info(f"📦 **Типы объектов в чертеже:** {type_counts}")
-    
-    # Разделим объекты на полилинии и остальные
-    polylines = []
-    other_length = 0.0
+    # ====== ВРЕМЕННЫЙ ПРЯМОЙ РАСЧЁТ (ПРАВИЛЬНЫЙ) ======
+    segment_map = {}  # ключ -> длина
+    non_segment_length = 0.0
+
     for entity_type, entity, length in entities_for_overlap:
-        if entity_type in ('LWPOLYLINE', 'POLYLINE'):
-            polylines.append(entity)
-        else:
-            other_length += length
-
-    st.info(f"""
-    🔧 **Диагностика входных данных**
-    *   Всего объектов: {len(entities_for_overlap)}
-    *   Из них полилиний (LWPOLYLINE/POLYLINE): {len(polylines)}
-    *   Сумма длин неполилиний (круги, дуги, линии и т.п.): {other_length:.2f} мм
-    """)
-
-    # Анализируем полилинии вручную
-    if polylines:
-        segment_map = {}
-        for polyline in polylines:
-            for key, length in OverlapHandler._extract_segments(polyline):
+        if entity_type == 'LINE':
+            try:
+                start = entity.dxf.start
+                end = entity.dxf.end
+                x1, y1 = float(start.x), float(start.y)
+                x2, y2 = float(end.x), float(end.y)
+                line_len = math.hypot(x2 - x1, y2 - y1)
+                key = normalize_segment_key(x1, y1, x2, y2, bulge=0.0)
                 if key not in segment_map:
-                    segment_map[key] = length
-                else:
-                    pass
+                    segment_map[key] = line_len
+            except Exception:
+                non_segment_length += length
+        elif entity_type in ('LWPOLYLINE', 'POLYLINE'):
+            for key, seg_len in OverlapHandler._extract_segments(entity):
+                if key not in segment_map:
+                    segment_map[key] = seg_len
+        else:
+            # CIRCLE, ARC и т.д. – не могут иметь общих сегментов с линиями
+            non_segment_length += length
 
-        unique_length = sum(segment_map.values())
-        total_poly_raw = sum(obj.length for obj in objects_data
-                             if obj.entity_type in ('LWPOLYLINE', 'POLYLINE'))
-
-        st.info(f"""
-        🔧 **Детали по полилиниям**
-        *   Суммарная длина полилиний (сырая): {total_poly_raw:.2f} мм
-        *   Найдено уникальных сегментов: **{len(segment_map)}**
-        *   Суммарная длина уникальных сегментов: **{unique_length:.2f} мм**
-        *   Разница (перекрытия внутри полилиний): {total_poly_raw - unique_length:.2f} мм
-        """)
-
-        segment_list = []
-        for i, (key, seg_len) in enumerate(segment_map.items()):
-            if i >= 15:
-                segment_list.append("...")
-                break
-            segment_list.append(
-                f"({key[0]:.1f}, {key[1]:.1f})-({key[2]:.1f}, {key[3]:.1f}) b={key[4]:.2f} → {seg_len:.2f}"
-            )
-        with st.expander("Примеры уникальных сегментов", expanded=False):
-            st.write("\n".join(segment_list))
-
-    # Итоговый расчёт через OverlapHandler
-    total_length = OverlapHandler.calculate_entities_length(entities_for_overlap)
-
+    total_length = non_segment_length + sum(segment_map.values())
     raw_sum = sum(obj.length for obj in objects_data)
     overlap_diff = raw_sum - total_length
+
     st.info(f"""
-    🔧 **Итоговый расчёт**
-    *   Сырая сумма всех длин: **{raw_sum:.2f} мм**
-    *   Результат OverlapHandler: **{total_length:.2f} мм**
+    🔧 **Временный прямой расчёт (LINE + POLYLINE)**
+    *   Всего уникальных сегментов: **{len(segment_map)}**
+    *   Длина уникальных сегментов: **{sum(segment_map.values()):.2f} мм**
+    *   Длина остальных объектов (окружности, дуги и т.п.): **{non_segment_length:.2f} мм**
+    *   ИТОГ общая длина: **{total_length:.2f} мм**
+    *   Сырая сумма: **{raw_sum:.2f} мм**
     *   Уменьшение за счёт перекрытий: **{overlap_diff:.2f} мм**
     """)
+    # ===================================================
 
     # Статистика по цветам
     color_stats = analyze_colors(objects_data)
-    
     return stats, color_stats, total_length
 
 
@@ -246,28 +200,23 @@ def _display_results(objects_data, total_length, piercing_count,
                      piercing_details, stats, color_stats, doc, collector):
     """Отображение результатов анализа"""
     
-    # Сводка
     if collector.has_errors:
         st.success(f"✅ Обработано: **{len(objects_data)}** объектов "
                   f"(🔴 {len(collector.errors)} ошибок)")
     else:
         st.success(f"✅ Обработано: **{len(objects_data)}** объектов")
     
-    # Метрики
     st.markdown("### 📏 Итоговая длина реза:")
     display_summary_metrics(total_length, len(objects_data), piercing_count)
     
-    # Статистика врезок
     st.markdown("### 📍 Статистика врезок (анализ связности):")
     display_piercing_metrics(piercing_details)
     
-    # Детали цепей
     if piercing_details['chains']:
         _display_chain_details(piercing_details['chains'])
     
     st.markdown("---")
     
-    # Таблицы и визуализация
     col_left, col_right = st.columns([1, 1.5])
     
     with col_left:
@@ -277,13 +226,11 @@ def _display_results(objects_data, total_length, piercing_count,
         st.markdown("### 🎨 Статистика по цветам")
         display_color_table(color_stats)
         
-        # Кнопки экспорта
         _render_export_buttons(objects_data, stats)
     
     with col_right:
         _render_visualization(doc, objects_data, collector)
     
-    # Модуль раскроя
     st.markdown("---")
     render_nesting_page(objects_data)
 
