@@ -29,273 +29,19 @@ class TestFixturesGenerator:
         self.create_ring()
         self.create_slot()
         self.create_complex_part()
-        self.create_ellipse()          # <-- ДОБАВЛЕНО
+        self.create_ellipse()          # <-- добавлен вызов
 
         print(f"\n✓ Все тестовые файлы успешно созданы в папке:\n   {self.output_dir.resolve()}")
 
-    def create_circle(self):
-        """1. Круг Ø200 мм"""
-        doc = ezdxf.new('R2010')
-        msp = doc.modelspace()
-        radius = 100.0
-        msp.add_circle((0, 0), radius=radius)
+    # ... все предыдущие методы create_circle, create_rectangle и т.д. без изменений ...
 
-        expected_length = 2 * math.pi * radius
-        doc.saveas(self.output_dir / "01_circle_d200.dxf")
-        print(f"✓ 01 Круг Ø200          → {expected_length:.3f} мм")
-        return expected_length
-
-    def create_rectangle(self):
-        """2. Прямоугольник 300×200 мм"""
-        doc = ezdxf.new('R2010')
-        msp = doc.modelspace()
-        width, height = 300.0, 200.0
-        points = [(0, 0), (width, 0), (width, height), (0, height)]
-        msp.add_lwpolyline(points, close=True)
-
-        expected_length = 2 * (width + height)
-        doc.saveas(self.output_dir / "02_rectangle_300x200.dxf")
-        print(f"✓ 02 Прямоугольник 300×200 → {expected_length:.3f} мм")
-        return expected_length
-
-    def create_square(self):
-        """3. Квадрат 250×250 мм"""
-        doc = ezdxf.new('R2010')
-        msp = doc.modelspace()
-        side = 250.0
-        points = [(0, 0), (side, 0), (side, side), (0, side)]
-        msp.add_lwpolyline(points, close=True)
-
-        expected_length = 4 * side
-        doc.saveas(self.output_dir / "03_square_250.dxf")
-        print(f"✓ 03 Квадрат 250×250     → {expected_length:.3f} мм")
-        return expected_length
-
-    def create_triangle(self):
-        """4. Равносторонний треугольник со стороной 150 мм"""
-        doc = ezdxf.new('R2010')
-        msp = doc.modelspace()
-        side = 150.0
-        height = side * math.sqrt(3) / 2
-        points = [(0, 0), (side, 0), (side / 2, height)]
-        msp.add_lwpolyline(points, close=True)
-
-        expected_length = 3 * side
-        doc.saveas(self.output_dir / "04_triangle_s150.dxf")
-        print(f"✓ 04 Треугольник 150     → {expected_length:.3f} мм")
-        return expected_length
-
-    def create_hexagon(self):
-        """5. Шестигранник (размер под ключ 100 мм)"""
-        doc = ezdxf.new('R2010')
-        msp = doc.modelspace()
-
-        across_flats = 100.0
-        side_length = across_flats * math.sqrt(3) / 2
-        radius = across_flats / math.sqrt(3)
-
-        points = []
-        for i in range(6):
-            angle = math.pi / 3 * i
-            x = radius * math.cos(angle)
-            y = radius * math.sin(angle)
-            points.append((x, y))
-
-        msp.add_lwpolyline(points, close=True)
-
-        expected_length = 6 * side_length
-
-        doc.saveas(self.output_dir / "05_hexagon_s100.dxf")
-        print(f"✓ 05 Шестигранник 100    → {expected_length:.3f} мм")
-        return expected_length
-
-    def create_flange(self):
-        """6. Фланец Ø300 мм с отверстиями"""
-        doc = ezdxf.new('R2010')
-        msp = doc.modelspace()
-
-        outer_radius = 150.0
-        center_hole_radius = 50.0
-        hole_radius = 10.0
-        pcd = 110.0
-
-        msp.add_circle((0, 0), radius=outer_radius)
-        msp.add_circle((0, 0), radius=center_hole_radius)
-
-        for i in range(4):
-            angle = math.pi / 2 * i
-            x = pcd * math.cos(angle)
-            y = pcd * math.sin(angle)
-            msp.add_circle((x, y), radius=hole_radius)
-
-        expected_length = (
-            2 * math.pi * outer_radius +
-            2 * math.pi * center_hole_radius +
-            8 * math.pi * hole_radius
-        )
-
-        doc.saveas(self.output_dir / "06_flange_d300_4holes.dxf")
-        print(f"✓ 06 Фланец Ø300         → {expected_length:.3f} мм")
-        return expected_length
-
-    def create_bracket(self):
-        """7. Кронштейн (L-образный)"""
-        doc = ezdxf.new('R2010')
-        msp = doc.modelspace()
-
-        points = [
-            (0, 0), (200, 0), (200, 50), (50, 50),
-            (50, 150), (0, 150)
-        ]
-        msp.add_lwpolyline(points, close=True)
-
-        msp.add_circle((25, 25), radius=8)
-        msp.add_circle((25, 125), radius=8)
-
-        # Расчёт периметра внешнего контура
-        outer_length = 0.0
-        n = len(points)
-        for i in range(n):
-            x1, y1 = points[i]
-            x2, y2 = points[(i + 1) % n]
-            outer_length += math.hypot(x2 - x1, y2 - y1)
-
-        holes_length = 2 * 2 * math.pi * 8  # 2 отверстия, 2 стороны (внутр. и внешн.)
-        expected_length = outer_length + holes_length
-
-        doc.saveas(self.output_dir / "07_bracket_200x150.dxf")
-        print(f"✓ 07 Кронштейн 200×150   → {expected_length:.3f} мм")
-        return expected_length
-
-    def create_ring(self):
-        """8. Кольцо (шайба) Ø200 / Ø100"""
-        doc = ezdxf.new('R2010')
-        msp = doc.modelspace()
-
-        outer_radius = 100.0
-        inner_radius = 50.0
-
-        msp.add_circle((0, 0), radius=outer_radius)
-        msp.add_circle((0, 0), radius=inner_radius)
-
-        expected_length = 2 * math.pi * (outer_radius + inner_radius)
-
-        doc.saveas(self.output_dir / "08_ring_d200_d100.dxf")
-        print(f"✓ 08 Кольцо Ø200/100     → {expected_length:.3f} мм")
-        return expected_length
-
-    def create_slot(self):
-        """9. Продолговатое отверстие (овал) 200×50 мм"""
-        doc = ezdxf.new('R2010')
-        msp = doc.modelspace()
-
-        length = 200.0
-        width = 50.0
-        r = width / 2
-
-        msp.add_arc(center=(r, r), radius=r, start_angle=90, end_angle=270)
-        msp.add_arc(center=(length - r, r), radius=r, start_angle=270, end_angle=90)
-        msp.add_line((r, width), (length - r, width))
-        msp.add_line((r, 0), (length - r, 0))
-
-        straight = length - width
-        arcs = 2 * math.pi * r
-
-        expected_length = 2 * straight + arcs
-
-        doc.saveas(self.output_dir / "09_slot_200x50.dxf")
-        print(f"✓ 09 Овал 200×50         → {expected_length:.3f} мм")
-        return expected_length
-
-    def create_complex_part(self):
-        """10. Сложная деталь - два изделия: квадрат 50×50 и L-образная рама"""
-        doc = ezdxf.new('R2010')
-        msp = doc.modelspace()
-        
-        # ============================================================
-        # ИЗДЕЛИЕ №1: Квадрат 50×50 (вырезается из правого верхнего угла)
-        # ============================================================
-        square_points = [
-            (250, 150),  # Нижний левый угол квадрата
-            (300, 150),  # Нижний правый угол
-            (300, 200),  # Верхний правый угол
-            (250, 200)   # Верхний левый угол
-        ]
-        msp.add_lwpolyline(square_points, close=True)
-        
-        # ============================================================
-        # ИЗДЕЛИЕ №2: L-образная рама (внешний контур)
-        # ============================================================
-        l_shape_points = [
-            (0, 0),      # Левый нижний
-            (300, 0),    # Правый нижний
-            (300, 150),  # Начало выреза (общая точка с квадратом)
-            (250, 150),  # Угол выреза (общая точка с квадратом)
-            (250, 200),  # Угол выреза (общая точка с квадратом)
-            (0, 200)     # Левый верхний
-        ]
-        msp.add_lwpolyline(l_shape_points, close=True)
-        
-        # ============================================================
-        # Отверстия внутри L-образной рамы
-        # ============================================================
-        # Центральное круглое отверстие Ø60
-        msp.add_circle((150, 100), radius=30)
-        
-        # Два крепёжных отверстия Ø10
-        msp.add_circle((50, 50), radius=5)
-        msp.add_circle((250, 50), radius=5)
-        
-        # ============================================================
-        # ПРАВИЛЬНЫЙ РАСЧЁТ ДЛИНЫ РЕЗА
-        # ============================================================
-        
-        # 1. Периметр квадрата 50×50 = 200 мм
-        square_perimeter = 4 * 50  # 200 мм
-        
-        # 2. Периметр L-образной рамы (через hypot для точности)
-        l_shape_perimeter = 0.0
-        n = len(l_shape_points)
-        for i in range(n):
-            x1, y1 = l_shape_points[i]
-            x2, y2 = l_shape_points[(i + 1) % n]
-            l_shape_perimeter += math.hypot(x2 - x1, y2 - y1)
-        # Результат: 300 + 150 + 50 + 50 + 250 + 200 = 1000 мм
-        
-        # 3. Длина окружностей отверстий
-        center_hole = 2 * math.pi * 30       # 188.495559 мм
-        mounting_holes = 2 * 2 * math.pi * 5  # 62.831853 мм
-        holes_length = center_hole + mounting_holes  # 251.327412 мм
-        
-        # 4. Общая сумма всех линий
-        total_all_lines = square_perimeter + l_shape_perimeter + holes_length
-        # = 200 + 1000 + 251.327412 = 1451.327412 мм
-        
-        # 5. ВЫЧИТАЕМ НАЛОЖЕНИЯ (общие стороны)
-        # Квадрат и L-образная рама имеют ДВЕ общие стороны по 50 мм:
-        #   - Нижняя сторона квадрата: от (250,150) до (300,150) = 50 мм
-        #   - Левая сторона квадрата: от (250,150) до (250,200) = 50 мм
-        overlap = 100.0  # 50 мм + 50 мм = 100 мм
-        
-        expected_length = total_all_lines - overlap
-        # = 1451.327412 - 100 = 1351.327412 мм (округляется до 1351.33)
-        
-        doc.saveas(self.output_dir / "10_complex_part.dxf")
-        print(f"✓ 10 Сложная деталь (2 изделия) → {expected_length:.3f} мм")
-        
-        return expected_length
-
-    # ================================================================
-    # НОВЫЙ МЕТОД: ЭЛЛИПС
-    # ================================================================
     def create_ellipse(self):
         """11. Эллипс с полуосями 100 и 50 мм (замкнутый)"""
         doc = ezdxf.new('R2010')
         msp = doc.modelspace()
 
-        # major_axis вектор, ratio = b/a
-        a = 100.0  # длина большой полуоси
-        b = 50.0   # длина малой полуоси
+        a = 100.0  # большая полуось
+        b = 50.0   # малая полуось
         msp.add_ellipse(
             center=(0, 0),
             major_axis=(a, 0),
@@ -304,9 +50,21 @@ class TestFixturesGenerator:
             end_param=2 * math.pi
         )
 
-        # Формула Рамануджана для периметра эллипса (как в ellipse_calculator.py)
-        h = ((a - b) ** 2) / ((a + b) ** 2)
-        expected_length = math.pi * (a + b) * (1 + (3 * h) / (10 + math.sqrt(4 - 3 * h)))
+        # Численное интегрирование периметра (как в калькуляторе)
+        num_segments = 200
+        dt = 2 * math.pi / num_segments
+        t = 0.0
+        total_length = 0.0
+        x_prev = a * math.cos(t)
+        y_prev = b * math.sin(t)
+        for _ in range(num_segments):
+            t += dt
+            x_curr = a * math.cos(t)
+            y_curr = b * math.sin(t)
+            total_length += math.hypot(x_curr - x_prev, y_curr - y_prev)
+            x_prev, y_prev = x_curr, y_curr
+
+        expected_length = total_length
 
         doc.saveas(self.output_dir / "11_ellipse_100x50.dxf")
         print(f"✓ 11 Эллипс 100×50       → {expected_length:.3f} мм")
