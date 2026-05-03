@@ -23,7 +23,7 @@ class TestCircleCalculator:
         circle = msp.add_circle((0, 0), radius=100)
         
         calculator = CircleCalculator()
-        length = calculator.calculate_length(circle)
+        length = calculator.calculate(circle)
         
         expected = 2 * math.pi * 100
         assert abs(length - expected) < 0.01
@@ -35,7 +35,7 @@ class TestCircleCalculator:
         circle = msp.add_circle((0, 0), radius=5)
         
         calculator = CircleCalculator()
-        length = calculator.calculate_length(circle)
+        length = calculator.calculate(circle)
         
         expected = 2 * math.pi * 5
         assert abs(length - expected) < 0.001
@@ -51,7 +51,7 @@ class TestLineCalculator:
         line = msp.add_line((0, 0), (100, 0))
         
         calculator = LineCalculator()
-        length = calculator.calculate_length(line)
+        length = calculator.calculate(line)
         
         assert length == 100.0
     
@@ -62,7 +62,7 @@ class TestLineCalculator:
         line = msp.add_line((0, 0), (0, 150))
         
         calculator = LineCalculator()
-        length = calculator.calculate_length(line)
+        length = calculator.calculate(line)
         
         assert length == 150.0
     
@@ -73,7 +73,7 @@ class TestLineCalculator:
         line = msp.add_line((0, 0), (30, 40))
         
         calculator = LineCalculator()
-        length = calculator.calculate_length(line)
+        length = calculator.calculate(line)
         
         expected = 50.0  # sqrt(30^2 + 40^2)
         assert abs(length - expected) < 0.01
@@ -94,7 +94,7 @@ class TestArcCalculator:
         )
         
         calculator = ArcCalculator()
-        length = calculator.calculate_length(arc)
+        length = calculator.calculate(arc)
         
         expected = math.pi * 100  # Половина окружности
         assert abs(length - expected) < 0.1
@@ -111,7 +111,7 @@ class TestArcCalculator:
         )
         
         calculator = ArcCalculator()
-        length = calculator.calculate_length(arc)
+        length = calculator.calculate(arc)
         
         expected = math.pi * 100 / 2  # Четверть окружности
         assert abs(length - expected) < 0.1
@@ -128,7 +128,7 @@ class TestPolylineCalculator:
         polyline = msp.add_lwpolyline(points, close=True)
         
         calculator = PolylineCalculator()
-        length = calculator.calculate_length(polyline)
+        length = calculator.calculate(polyline)
         
         expected = 400.0
         assert abs(length - expected) < 0.01
@@ -141,7 +141,7 @@ class TestPolylineCalculator:
         polyline = msp.add_lwpolyline(points, close=False)
         
         calculator = PolylineCalculator()
-        length = calculator.calculate_length(polyline)
+        length = calculator.calculate(polyline)
         
         expected = 200.0
         assert abs(length - expected) < 0.01
