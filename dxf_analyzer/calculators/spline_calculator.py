@@ -14,7 +14,7 @@ class SplineCalculator(BaseCalculator):
         """Calculate SPLINE length (approximation)"""
         try:
             # Get flattened points
-            points = list(entity.flattening(0.001))
+            points = list(entity.flattening(0.0001))
             
             total = 0.0
             for i in range(len(points) - 1):
