@@ -1,6 +1,7 @@
 """
 Страница проверки точности расчёта длины реза
 Загрузите DXF-файл и увидите сравнение пяти методов
++ детальную таблицу по объектам для выявления ошибок.
 """
 
 import streamlit as st
@@ -9,9 +10,8 @@ import math
 import tempfile
 import os
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, List
 
-# Добавляем корень проекта в путь, если ещё нет
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
 try:
@@ -27,9 +27,10 @@ except ImportError:
     SHAPELY_AVAILABLE = False
 
 from dxf_analyzer.calculators.cut_length import calculate_cut_length
+from dxf_analyzer.calculators.registry import get_calculator
 from dxf_analyzer.core.config import SILENT_SKIP_TYPES
 
-# ----- Вспомогательные функции (скопированы из verify_cut_length.py) -----
+# ----- Вспомогательные функции (из verify_cut_length.py) -----
 def direct_line_length(entity) -> float:
     s = entity.dxf.start
     e = entity.dxf.end
@@ -183,20 +184,19 @@ def entity_to_shapely(entity):
     except Exception:
         return None
     return None
-# ----------------------------------------------------------------
 
+# ----------------------------------------------------------------
 def render_verify_page():
     st.title("🔍 Проверка точности расчёта длины реза")
     st.markdown("""
     Загрузите DXF-файл, и **5 разных методов** одновременно вычислят длину реза.
-    Вы увидите таблицу сравнения, расхождения и итоговый вердикт.
+    Дополнительно можно посмотреть **детальную таблицу по каждому объекту**, чтобы найти источник расхождений.
     """)
 
     uploaded_file = st.file_uploader("📂 Загрузите DXF-файл для верификации", type=["dxf"])
 
     if uploaded_file is not None:
         with st.spinner("⏳ Вычисляем длину реза пятью методами..."):
-            # Сохраняем во временный файл
             with tempfile.NamedTemporaryFile(delete=False, suffix=".dxf") as tmp:
                 tmp.write(uploaded_file.getbuffer())
                 tmp_path = tmp.name
@@ -218,39 +218,37 @@ def render_verify_page():
                 direct_details = []
                 for e in entities:
                     t = e.dxftype()
-                    if t == 'LINE':
-                        val = direct_line_length(e)
-                    elif t == 'ARC':
-                        val = direct_arc_length(e)
-                    elif t == 'CIRCLE':
-                        val = direct_circle_length(e)
-                    elif t == 'LWPOLYLINE':
-                        val = direct_lwpolyline_length(e)
-                    elif t == 'POLYLINE':
-                        val = direct_polyline_length(e)
-                    elif t == 'SPLINE':
-                        val = spline_length_high_precision(e)
-                    elif t == 'ELLIPSE':
-                        val = ellipse_length_high_precision(e)
-                    else:
-                        val = 0.0
+                    if t == 'LINE': val = direct_line_length(e)
+                    elif t == 'ARC': val = direct_arc_length(e)
+                    elif t == 'CIRCLE': val = direct_circle_length(e)
+                    elif t == 'LWPOLYLINE': val = direct_lwpolyline_length(e)
+                    elif t == 'POLYLINE': val = direct_polyline_length(e)
+                    elif t == 'SPLINE': val = spline_length_high_precision(e)
+                    elif t == 'ELLIPSE': val = ellipse_length_high_precision(e)
+                    else: val = 0.0
                     direct_details.append(val)
                 total_direct = sum(direct_details)
 
                 # 3. Shapely
                 total_shapely = 0.0
+                shapely_lengths = []
                 if SHAPELY_AVAILABLE:
                     for e in entities:
                         geom = entity_to_shapely(e)
                         if geom:
-                            total_shapely += geom.length
+                            l = geom.length
+                            total_shapely += l
+                            shapely_lengths.append(l)
+                        else:
+                            shapely_lengths.append(0.0)
                 else:
+                    shapely_lengths = [0.0] * len(entities)
                     st.warning("⚠️ Shapely не установлен – метод недоступен")
 
-                # 4. Повышенная точность (берем прямые, т.к. они уже high-res)
+                # 4. Повышенная точность (кривые)
                 total_highprec = total_direct
 
-                # 5. Рамануджан для эллипсов, остальное прямо
+                # 5. Рамануджан для эллипсов + прямое для остальных
                 total_ramanujan = 0.0
                 for i, e in enumerate(entities):
                     if e.dxftype() == 'ELLIPSE':
@@ -265,25 +263,19 @@ def render_verify_page():
                     "Повышенная точность (кривые)": total_highprec,
                     "Рамануджан (эллипсы) + прямо": total_ramanujan
                 }
-                # Убираем None
                 methods = {k: v for k, v in methods.items() if v is not None}
 
-                # ----- ОТОБРАЖЕНИЕ РЕЗУЛЬТАТОВ -----
+                # ----- Итоговая таблица методов -----
                 st.success("✅ Вычисления завершены!")
-
                 st.markdown("### 📊 Сравнение методов")
-                # Таблица
-                import pandas as pd
-                df = pd.DataFrame({
+                df_methods = pd.DataFrame({
                     "Метод": list(methods.keys()),
                     "Длина (мм)": [round(v, 3) for v in methods.values()],
                     "Отклонение от основного (мм)": [round(v - total_main, 3) for v in methods.values()]
                 })
-                st.table(df)
+                st.table(df_methods)
 
-                # Максимальное отклонение
                 max_dev = max(abs(v - total_main) for v in methods.values())
-
                 col1, col2, col3 = st.columns(3)
                 with col1:
                     st.metric("Основной метод", f"{total_main:.3f} мм")
@@ -301,6 +293,83 @@ def render_verify_page():
                 st.markdown("### 📈 Визуализация отклонений")
                 chart_data = {"Метод": list(methods.keys()), "Длина, мм": list(methods.values())}
                 st.bar_chart(chart_data, x="Метод", y="Длина, мм")
+
+                # -------------------------------------------------
+                # Детальная таблица по объектам (новая часть)
+                # -------------------------------------------------
+                st.markdown("---")
+                st.markdown("### 🔬 Детальная таблица сравнения по объектам")
+                show_details = st.checkbox("Показать детальную таблицу по объектам")
+
+                if show_details:
+                    # Собираем длины из отдельных калькуляторов (без OverlapHandler)
+                    calc_lengths = []
+                    for e in entities:
+                        calc = get_calculator(e.dxftype())
+                        if calc:
+                            calc_lengths.append(calc(e))
+                        else:
+                            calc_lengths.append(0.0)
+
+                    # Формируем строки таблицы
+                    rows = []
+                    for i, e in enumerate(entities, 1):
+                        direct = direct_details[i-1]
+                        shapely = shapely_lengths[i-1] if SHAPELY_AVAILABLE else 0.0
+                        calc = calc_lengths[i-1]
+                        diff = abs(direct - calc)
+                        is_dedup = e.dxftype() in ('LINE', 'LWPOLYLINE', 'POLYLINE')
+                        rows.append({
+                            "№": i,
+                            "Тип": e.dxftype(),
+                            "Прямая длина (мм)": round(direct, 3),
+                            "Shapely (мм)": round(shapely, 3) if SHAPELY_AVAILABLE else "N/A",
+                            "Калькулятор (мм)": round(calc, 3),
+                            "Расхождение (мм)": round(diff, 3),
+                            "В дедупликации?": "да" if is_dedup else "нет"
+                        })
+
+                    df_details = pd.DataFrame(rows)
+
+                    # Суммы
+                    total_direct_table = sum(direct_details)
+                    total_shapely_table = sum(shapely_lengths) if SHAPELY_AVAILABLE else 0.0
+                    total_calc_table = sum(calc_lengths)
+                    sum_row = {
+                        "№": "",
+                        "Тип": "ИТОГО",
+                        "Прямая длина (мм)": round(total_direct_table, 2),
+                        "Shapely (мм)": round(total_shapely_table, 2) if SHAPELY_AVAILABLE else "N/A",
+                        "Калькулятор (мм)": round(total_calc_table, 2),
+                        "Расхождение (мм)": round(abs(total_direct_table - total_calc_table), 2),
+                        "В дедупликации?": ""
+                    }
+                    df_details = pd.concat([df_details, pd.DataFrame([sum_row])], ignore_index=True)
+
+                    # Подсветка строк с расхождением > 0.001
+                    def highlight_diff(row):
+                        if isinstance(row["Расхождение (мм)"], (int, float)):
+                            if row["Расхождение (мм)"] > 0.001:
+                                return ['background-color: #ffcccc'] * len(row)
+                        return [''] * len(row)
+
+                    styled = df_details.style.apply(highlight_diff, axis=1)
+
+                    st.dataframe(styled, use_container_width=True, hide_index=False)
+
+                    # Информация о расхождениях
+                    big_issues = [i for i, d in enumerate(direct_details) if abs(d - calc_lengths[i]) > 0.001]
+                    if big_issues:
+                        st.error(f"⚠️ Найдено {len(big_issues)} объектов с расхождением > 0.001 мм.")
+                        st.markdown("**Объекты с расхождением:**")
+                        for idx in big_issues:
+                            e = entities[idx]
+                            st.write(f"• Объект #{idx+1} ({e.dxftype()}): "
+                                     f"прямая={direct_details[idx]:.3f} мм, "
+                                     f"калькулятор={calc_lengths[idx]:.3f} мм, "
+                                     f"разница={abs(direct_details[idx] - calc_lengths[idx]):.3f} мм")
+                    else:
+                        st.success("✅ Все калькуляторы совпадают с прямыми формулами на уровне 0.001 мм.")
 
             except Exception as e:
                 st.error(f"❌ Ошибка при анализе: {e}")
