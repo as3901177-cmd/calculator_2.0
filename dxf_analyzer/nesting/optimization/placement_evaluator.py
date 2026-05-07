@@ -1,35 +1,37 @@
 """
-Placement quality evaluation
+PlacementEvaluator — улучшенная оценка позиции
 """
 
 try:
     from shapely.geometry import Polygon as ShapelyPolygon
-    SHAPELY_AVAILABLE = True
 except ImportError:
-    SHAPELY_AVAILABLE = False
     ShapelyPolygon = None
 
 from ..models import Sheet
 
 
 class PlacementEvaluator:
-    """Evaluate placement quality"""
-    
-    def evaluate(self, sheet: Sheet, geometry: ShapelyPolygon) -> float:
-        """
-        Evaluate placement quality (lower is better)
-        
-        Strategy: Prioritize bottom-left positions
-        
-        Args:
-            sheet: Sheet
-            geometry: Part geometry
-            
-        Returns:
-            float: Placement score (lower is better)
-        """
-        bounds = geometry.bounds
-        
-        # Bottom-left heuristic: y * 1000 + x
-        # Heavily prioritize lower positions
-        return bounds[1] * 1000 + bounds[0]
+    def __init__(self):
+        pass
+
+    def evaluate(self, sheet: Sheet, geometry: ShapelyPolygon, placed_x: float, placed_y: float) -> float:
+        score = 0.0
+        score += placed_y * 2.3
+        score += placed_x * 0.7
+
+        # Bonus for touching other parts
+        for part in sheet.parts:
+            dist = geometry.distance(part.geometry)
+            if dist < 0.05:
+                score -= 30
+            elif dist < 5.0:
+                score -= 12
+
+        if placed_y < 20:
+            score -= 50
+        if placed_x < 20:
+            score -= 18
+        if placed_y > sheet.height * 0.7:
+            score += 60
+
+        return score
