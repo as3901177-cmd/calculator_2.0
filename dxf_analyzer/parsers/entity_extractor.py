@@ -15,6 +15,21 @@ from ..geometry.transforms import get_entity_center, validate_closure
 from .validators.geometry_validator import GeometryValidator
 
 
+# Сопоставление кодов проблем → понятный русский текст для аннотаций
+PROBLEM_RU_MAP = {
+    "ClosureDiscrepancy": "Флаг замкнутости неверен",
+    "DuplicateVertex": "Дубликаты вершин",
+    "SelfIntersection": "Самопересечение",
+    "NearlyClosed": "Почти замкнута",
+    "LargeCoordinate": "Очень большие координаты",
+    "SmallAngle": "Малый угол дуги",
+    "OpenEllipse": "Незамкнутый эллипс",
+    "DegenerateRadius": "Вырожденный радиус",
+    "NonFiniteCoord": "Неконечные координаты",
+    "NonFiniteBulge": "Неконечный bulge",
+}
+
+
 def extract_entities(doc: Drawing, collector: ErrorCollector) -> List[DXFObject]:
     msp = doc.modelspace()
     objects_data: List[DXFObject] = []
@@ -72,21 +87,25 @@ def extract_entities(doc: Drawing, collector: ErrorCollector) -> List[DXFObject]
                                       f"Нулевая длина ({length:.6f} мм)")
             continue
 
-        # Собираем все коды проблем для аннотаций
-        problem_codes = set()
+        # --- Формирование читаемого описания проблемы для аннотации (русские фразы) ---
+        issue_phrases = []
+        # Собираем коды из геометрических проблем
         for issue in geom_issues:
             if issue.level in ("warning", "error") and issue.code:
-                problem_codes.add(issue.code)
+                ru = PROBLEM_RU_MAP.get(issue.code, issue.code)
+                if ru not in issue_phrases:
+                    issue_phrases.append(ru)
+        # Добавляем информацию о замкнутости, если есть предупреждение
         if closure_warn:
-            problem_codes.add("ClosureDiscrepancy")
-        if status != ObjectStatus.NORMAL:
-            # описание ошибки уже есть, добавим коды
+            phrase = PROBLEM_RU_MAP.get("ClosureDiscrepancy", "Флаг замкнутости неверен")
+            if phrase not in issue_phrases:
+                issue_phrases.append(phrase)
+
+        if issue_phrases:
+            issue_desc = "; ".join(issue_phrases)
+        else:
+            # issue_desc остаётся тем, что вернул calc_entity_safe (может быть пустым)
             pass
-        # Если есть проблемы, дополняем описание
-        if problem_codes and not issue_desc:
-            issue_desc = ", ".join(sorted(problem_codes))
-        elif problem_codes:
-            issue_desc += " | " + ", ".join(sorted(problem_codes))
 
         calc_object_num += 1
         center = get_entity_center(entity)
