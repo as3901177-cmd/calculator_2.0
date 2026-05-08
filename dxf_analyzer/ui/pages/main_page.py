@@ -14,6 +14,7 @@ from ...parsers.layer_analyzer import analyze_colors
 from ...geometry.piercing_counter import count_piercings_advanced
 from ...geometry.contour_builder import chain_to_polygon
 from ...geometry.contour_classifier import classify_contours
+from ...geometry.contour_validator import validate_all_contours
 from ...visualization.renderers.matplotlib_renderer import visualize_dxf_with_status_indicators
 from ...export.csv_exporter import export_to_csv, export_statistics_to_csv
 from ..components.error_reporter import show_error_report
@@ -111,8 +112,28 @@ def _process_file(uploaded_file):
                     for cid, warns in contour_warnings.items():
                         for w in warns:
                             st.warning(f"🔸 Контур #{cid}: {w}")
+
+                    # === Валидация и автоисправление контуров ===
+                    fixed_polygons, validation_messages = validate_all_contours(
+                        external_id, internal_ids, chain_polygons
+                    )
+                    st.session_state['fixed_polygons'] = fixed_polygons
+                    st.session_state['validation_messages'] = validation_messages
+
+                    if fixed_polygons:
+                        st.success(f"✅ После валидации: {len(fixed_polygons)} корректных контуров")
+                    for cid, msgs in validation_messages.items():
+                        for msg in msgs:
+                            if msg.startswith("❌"):
+                                st.error(f"🔴 {msg}")
+                            elif msg.startswith("⚠"):
+                                st.warning(f"🟡 {msg}")
+                            else:
+                                st.info(f"ℹ️ {msg}")
                 else:
                     st.session_state['contour_classification'] = None
+                    st.session_state['fixed_polygons'] = None
+                    st.session_state['validation_messages'] = None
 
                 _display_results(objects_data, total_length, piercing_count,
                                  piercing_details, stats, color_stats, doc, collector)
@@ -171,10 +192,23 @@ def _display_results(objects_data, total_length, piercing_count,
                     st.markdown("*Внутренние отверстия не найдены*")
             else:
                 st.warning("Классификация не выполнена")
-            # Предупреждения классификации уже показаны ранее, но можно продублировать
+            # Предупреждения классификации
             for cid, warns in classif['warnings'].items():
                 for w in warns:
                     st.warning(f"🔸 Контур #{cid}: {w}")
+
+    # Отображение сообщений валидации (если ещё не показаны)
+    if 'validation_messages' in st.session_state and st.session_state['validation_messages']:
+        validation_msgs = st.session_state['validation_messages']
+        with st.expander("🔍 Результаты валидации контуров", expanded=False):
+            for cid, msgs in validation_msgs.items():
+                for msg in msgs:
+                    if "❌" in msg:
+                        st.error(msg)
+                    elif "⚠" in msg:
+                        st.warning(msg)
+                    else:
+                        st.info(msg)
 
     st.markdown("---")
     col_left, col_right = st.columns([1, 1.5])
