@@ -38,6 +38,12 @@ def bulge_arc_length(
     Returns:
         Длина дуги (или прямого сегмента если bulge == 0)
     """
+    # Проверка на конечность всех аргументов
+    if not (math.isfinite(x1) and math.isfinite(y1) and
+            math.isfinite(x2) and math.isfinite(y2) and
+            math.isfinite(bulge)):
+        return 0.0
+
     # Прямой сегмент
     if abs(bulge) < 1e-10:
         return math.hypot(x2 - x1, y2 - y1)
