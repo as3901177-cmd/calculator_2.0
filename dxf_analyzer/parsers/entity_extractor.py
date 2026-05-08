@@ -72,10 +72,21 @@ def extract_entities(doc: Drawing, collector: ErrorCollector) -> List[DXFObject]
                                       f"Нулевая длина ({length:.6f} мм)")
             continue
 
-        # --- Информирование о слишком маленькой длине ---
-        if length < GeometryValidator.VERY_SMALL_LENGTH_THRESHOLD:
-            collector.add_info(entity_type, real_object_num,
-                               f"Очень маленькая длина ({length:.4f} мм), возможен мусор")
+        # Собираем все коды проблем для аннотаций
+        problem_codes = set()
+        for issue in geom_issues:
+            if issue.level in ("warning", "error") and issue.code:
+                problem_codes.add(issue.code)
+        if closure_warn:
+            problem_codes.add("ClosureDiscrepancy")
+        if status != ObjectStatus.NORMAL:
+            # описание ошибки уже есть, добавим коды
+            pass
+        # Если есть проблемы, дополняем описание
+        if problem_codes and not issue_desc:
+            issue_desc = ", ".join(sorted(problem_codes))
+        elif problem_codes:
+            issue_desc += " | " + ", ".join(sorted(problem_codes))
 
         calc_object_num += 1
         center = get_entity_center(entity)
@@ -103,7 +114,6 @@ def extract_entities(doc: Drawing, collector: ErrorCollector) -> List[DXFObject]
     if skipped_types:
         collector.add_info('PARSER', 0, f"Пропущенные типы: {', '.join(sorted(skipped_types))}")
 
-    # Итоговая сводка по валидации
     summary = collector.get_summary()
     if summary['warnings'] > 0 or summary['errors'] > 0:
         collector.add_info('SYSTEM', 0,
