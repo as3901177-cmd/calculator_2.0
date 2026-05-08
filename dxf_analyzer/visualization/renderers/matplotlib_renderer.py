@@ -15,6 +15,7 @@ from ..styles.color_schemes import get_status_color, get_chain_color
 from ..styles.status_colors import STATUS_COLORS
 from ...utils.color_utils import fix_white_color
 from ...core.config import get_aci_color
+from ...geometry.transforms import get_endpoints   # требуется для маркеров разрыва
 
 
 class MatplotlibRenderer:
@@ -78,6 +79,7 @@ class MatplotlibRenderer:
             print(f"ERROR in visualization: {error_details}")
             return None, str(e)
 
+    # ---------- все имеющиеся вспомогательные методы (без изменений) ----------
     def _generate_chain_colors(self, objects_data: List[DXFObject]) -> dict:
         unique_chains = list(set(obj.chain_id for obj in objects_data))
         num_chains = len(unique_chains)
@@ -269,40 +271,69 @@ class MatplotlibRenderer:
                               alpha=0.9, edgecolor=marker_color, linewidth=1.5))
 
     def _draw_error_annotations(self, ax, objects_data, font_size_multiplier):
-        """Рисует текстовые аннотации проблем для режима 'Индикация ошибок'."""
+        """Рисует аннотации ошибок, разносит их и подсвечивает места разрывов."""
         if not objects_data:
             return
         ann_font_size = 7 * font_size_multiplier
-        for obj in objects_data:
+        # Счётчик для разнесения аннотаций
+        issue_count = 0
+        # Вычисляем базовое смещение на основе количества проблемных объектов
+        problem_objects = [obj for obj in objects_data if obj.status != ObjectStatus.NORMAL or obj.issue_description]
+        step = 25.0  # шаг смещения в единицах данных (мм)
+
+        for idx, obj in enumerate(objects_data):
             if obj.status == ObjectStatus.NORMAL and not obj.issue_description:
                 continue
             if obj.center is None:
                 continue
             x, y = obj.center
-            # Цвет аннотации по статусу объекта
+
+            # Цвет аннотации
             if obj.status == ObjectStatus.ERROR:
                 color = 'red'
             elif obj.status == ObjectStatus.WARNING:
                 color = 'darkorange'
             else:
                 color = 'darkgoldenrod'
-            # Текст аннотации – только русское описание проблемы (без кодов статуса)
+
             label = obj.issue_description if obj.issue_description else ""
+            # Определяем, связано ли с разрывом замкнутости
+            has_gap = "Флаг замкнутости неверен" in label
+            if has_gap:
+                # Пытаемся получить концы полилинии
+                ends = get_endpoints(obj.entity)
+                if ends:
+                    (x1, y1), (x2, y2) = ends
+                    # Рисуем красные кружки на концах
+                    ax.plot(x1, y1, marker='o', color='red', markersize=8,
+                            markeredgecolor='darkred', markeredgewidth=1.5, zorder=300)
+                    ax.plot(x2, y2, marker='o', color='red', markersize=8,
+                            markeredgecolor='darkred', markeredgewidth=1.5, zorder=300)
+                    # Пунктирная линия зазора
+                    ax.plot([x1, x2], [y1, y2], linestyle='--', color='red', linewidth=1.5, alpha=0.7, zorder=299)
+
             if not label:
                 continue
-            offset_x, offset_y = 15, 15
+
+            # Разносим аннотации: смещение зависит от номера проблемного объекта
+            offset_angle = (idx * 1.2) % (2 * math.pi)  # распределяем по кругу
+            offset_dist = 20 + (idx % 5) * 12  # расстояние выноски
+            dx = offset_dist * math.cos(offset_angle)
+            dy = offset_dist * math.sin(offset_angle)
+
             ax.annotate(
                 label,
                 xy=(x, y),
-                xytext=(x + offset_x, y + offset_y),
+                xytext=(x + dx, y + dy),
                 fontsize=ann_font_size,
                 color=color,
                 weight='bold',
                 bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.95,
                           edgecolor=color, linewidth=1.2),
-                arrowprops=dict(arrowstyle='->', color=color, lw=1.2, connectionstyle='arc3,rad=0.2'),
-                zorder=200
+                arrowprops=dict(arrowstyle='->', color=color, lw=1.2, connectionstyle='arc3,rad=0.3'),
+                zorder=250
             )
+            issue_count += 1
 
     def _get_title(self, show_chains, objects_data):
         if show_chains:
