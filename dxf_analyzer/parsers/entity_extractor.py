@@ -11,7 +11,8 @@ from ..core.config import MIN_LENGTH, ZERO_LENGTH_TYPES, SILENT_SKIP_TYPES
 from ..calculators.registry import get_calculator
 from ..utils.layer_utils import get_layer_info
 from ..utils.calculation_utils import calc_entity_safe
-from ..geometry.transforms import get_entity_center, validate_closure      # <-- изменён импорт
+from ..geometry.transforms import get_entity_center
+from .validators.geometry_validator import GeometryValidator, GeometryIssue
 
 
 def extract_entities(doc: Drawing, collector: ErrorCollector) -> List[DXFObject]:
@@ -43,6 +44,37 @@ def extract_entities(doc: Drawing, collector: ErrorCollector) -> List[DXFObject]
                 skipped_types.add(entity_type)
             continue
 
+        # ---- Централизованная геометрическая валидация ----
+        geom_valid, geom_issues = GeometryValidator.validate(entity)
+        if not geom_valid:
+            # Объект не прошёл базовую проверку – пропускаем и записываем ошибки
+            for issue in geom_issues:
+                if issue.level == "error":
+                    collector.add_error(entity_type, real_object_num, issue.message, issue.code)
+                else:
+                    collector.add_warning(entity_type, real_object_num, issue.message, issue.code)
+            continue
+
+        # Добавляем предупреждения (не ошибки) в коллектор
+        for issue in geom_issues:
+            if issue.level in ("warning", "info"):
+                collector.add_warning(entity_type, real_object_num, issue.message, issue.code)
+
+        # Получаем фактический признак замкнутости из GeometryValidator, 
+        # чтобы передать в DXFObject (валидатор его определил через _check_closure)
+        # Примечание: GeometryValidator.validate не возвращает is_closed отдельно,
+        # но мы можем получить его специальным вызовом или положиться на validate_closure.
+        # Чтобы не усложнять, вызовем старый validate_closure (он теперь внутри валидатора,
+        # но мы можем его использовать). Однако сейчас мы можем просто вызвать
+        # GeometryValidator._check_closure отдельно? Не очень красиво.
+        # Решение: оставим импорт validate_closure из transforms и будем использовать его.
+        # В будущем можно расширить GeometryValidator, чтобы возвращать и флаг замкнутости.
+        from ..geometry.transforms import validate_closure
+        is_closed, closure_warn = validate_closure(entity)
+        if closure_warn:
+            collector.add_warning(entity_type, real_object_num, closure_warn, "ClosureDiscrepancy")
+        # -------------------------------------------------
+
         # Calculate length
         length, status, issue_desc = calc_entity_safe(
             entity_type, entity, real_object_num, collector
@@ -56,14 +88,6 @@ def extract_entities(doc: Drawing, collector: ErrorCollector) -> List[DXFObject]
 
         calc_object_num += 1
         center = get_entity_center(entity)
-
-        # --------------- ВСТАВКА: геометрическая проверка замкнутости ---------------
-        actual_closed, closure_warning = validate_closure(entity)
-        if closure_warning:
-            collector.add_warning(entity_type, real_object_num, closure_warning,
-                                  "ClosureDiscrepancy")
-        is_closed = actual_closed
-        # --------------------------------------------------------------------------
 
         # Create DXF object
         dxf_obj = DXFObject(
