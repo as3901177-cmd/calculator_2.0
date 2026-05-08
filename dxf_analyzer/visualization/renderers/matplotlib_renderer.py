@@ -15,7 +15,7 @@ from ..styles.color_schemes import get_status_color, get_chain_color
 from ..styles.status_colors import STATUS_COLORS
 from ...utils.color_utils import fix_white_color
 from ...core.config import get_aci_color
-from ...geometry.transforms import get_endpoints   # требуется для маркеров разрыва
+from ...geometry.transforms import get_endpoints_force
 
 
 class MatplotlibRenderer:
@@ -79,7 +79,6 @@ class MatplotlibRenderer:
             print(f"ERROR in visualization: {error_details}")
             return None, str(e)
 
-    # ---------- все имеющиеся вспомогательные методы (без изменений) ----------
     def _generate_chain_colors(self, objects_data: List[DXFObject]) -> dict:
         unique_chains = list(set(obj.chain_id for obj in objects_data))
         num_chains = len(unique_chains)
@@ -275,11 +274,6 @@ class MatplotlibRenderer:
         if not objects_data:
             return
         ann_font_size = 7 * font_size_multiplier
-        # Счётчик для разнесения аннотаций
-        issue_count = 0
-        # Вычисляем базовое смещение на основе количества проблемных объектов
-        problem_objects = [obj for obj in objects_data if obj.status != ObjectStatus.NORMAL or obj.issue_description]
-        step = 25.0  # шаг смещения в единицах данных (мм)
 
         for idx, obj in enumerate(objects_data):
             if obj.status == ObjectStatus.NORMAL and not obj.issue_description:
@@ -288,7 +282,6 @@ class MatplotlibRenderer:
                 continue
             x, y = obj.center
 
-            # Цвет аннотации
             if obj.status == ObjectStatus.ERROR:
                 color = 'red'
             elif obj.status == ObjectStatus.WARNING:
@@ -297,14 +290,12 @@ class MatplotlibRenderer:
                 color = 'darkgoldenrod'
 
             label = obj.issue_description if obj.issue_description else ""
-            # Определяем, связано ли с разрывом замкнутости
             has_gap = "Флаг замкнутости неверен" in label
             if has_gap:
-                # Пытаемся получить концы полилинии
-                ends = get_endpoints(obj.entity)
+                ends = get_endpoints_force(obj.entity)
                 if ends:
                     (x1, y1), (x2, y2) = ends
-                    # Рисуем красные кружки на концах
+                    # Красные кружки на концах
                     ax.plot(x1, y1, marker='o', color='red', markersize=8,
                             markeredgecolor='darkred', markeredgewidth=1.5, zorder=300)
                     ax.plot(x2, y2, marker='o', color='red', markersize=8,
@@ -315,9 +306,9 @@ class MatplotlibRenderer:
             if not label:
                 continue
 
-            # Разносим аннотации: смещение зависит от номера проблемного объекта
-            offset_angle = (idx * 1.2) % (2 * math.pi)  # распределяем по кругу
-            offset_dist = 20 + (idx % 5) * 12  # расстояние выноски
+            # Разнесение аннотаций
+            offset_angle = (idx * 1.2) % (2 * math.pi)
+            offset_dist = 20 + (idx % 5) * 12
             dx = offset_dist * math.cos(offset_angle)
             dy = offset_dist * math.sin(offset_angle)
 
@@ -333,7 +324,6 @@ class MatplotlibRenderer:
                 arrowprops=dict(arrowstyle='->', color=color, lw=1.2, connectionstyle='arc3,rad=0.3'),
                 zorder=250
             )
-            issue_count += 1
 
     def _get_title(self, show_chains, objects_data):
         if show_chains:
