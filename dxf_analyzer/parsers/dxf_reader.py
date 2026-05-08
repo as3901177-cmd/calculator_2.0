@@ -16,26 +16,14 @@ from ..core.exceptions import DXFParsingError
 def read_dxf_file(file_buffer, collector: ErrorCollector) -> Tuple[Optional[Drawing], Optional[str]]:
     """
     Read DXF file from buffer
-
-    Args:
-        file_buffer: File buffer from Streamlit uploader
-        collector: Error collector
-
-    Returns:
-        Tuple[Optional[Drawing], Optional[str]]: (ezdxf document, temp file path)
-
-    Raises:
-        DXFParsingError: If file cannot be read
     """
     temp_path = None
 
     try:
-        # Save to temporary file
         with tempfile.NamedTemporaryFile(suffix='.dxf', delete=False) as tmp:
             tmp.write(file_buffer.getbuffer())
             temp_path = tmp.name
 
-        # Попытка обычного чтения
         doc = None
         recovery_used = False
         try:
@@ -44,7 +32,6 @@ def read_dxf_file(file_buffer, collector: ErrorCollector) -> Tuple[Optional[Draw
             collector.add_warning('FILE', 0, f"Повреждённый DXF, попытка восстановления... ({e})")
             doc, auditor = ezdxf.recover(str(temp_path))
             recovery_used = True
-            # Логируем ошибки восстановления
             if auditor.errors:
                 for err in auditor.errors:
                     collector.add_warning('FILE', 0, f"Recover issue: {err.message}", err.code)
@@ -55,27 +42,15 @@ def read_dxf_file(file_buffer, collector: ErrorCollector) -> Tuple[Optional[Draw
         if dxf_version < 'AC1018':
             collector.add_warning('FILE', 0, f"Old DXF version: {dxf_version}", "DXFVersionWarning")
 
-        # Аудит modelspace (удаление дубликатов, исправление ошибок)
-        try:
-            auditor = doc.modelspace().audit()
-            if auditor.errors:
-                for err in auditor.errors:
-                    collector.add_warning('FILE', 0, f"Audit error: {err.message}", err.code)
-                # Восстановление может изменить геометрию, но это лучше чем оставить битые объекты
-        except Exception as audit_ex:
-            collector.add_warning('FILE', 0, f"Не удалось выполнить аудит модели: {audit_ex}")
-
         # Масштабирование единиц измерения
-        insunits = doc.header.get('$INSUNITS', 4)      # 4 = миллиметры
-        if insunits == 1:                                # дюймы
+        insunits = doc.header.get('$INSUNITS', 4)
+        if insunits == 1:           # дюймы
             scale = 25.4
             doc.modelspace().transform(Matrix44.scale(scale, scale, scale))
             collector.add_info('FILE', 0, f"Единицы измерения переведены из дюймов в мм (×{scale})")
         elif insunits not in (4, 0):
-            collector.add_warning(
-                'FILE', 0,
-                f"Неизвестный формат единиц ($INSUNITS={insunits}). Расчёт может быть некорректным."
-            )
+            collector.add_warning('FILE', 0,
+                                  f"Неизвестный формат единиц ($INSUNITS={insunits}). Расчёт может быть некорректным.")
 
         collector.add_info('FILE', 0, f"File loaded. Version: {dxf_version}" +
                            (" (восстановлен)" if recovery_used else ""))
@@ -91,7 +66,6 @@ def read_dxf_file(file_buffer, collector: ErrorCollector) -> Tuple[Optional[Draw
         raise DXFParsingError(f"Unexpected error: {e}")
 
     finally:
-        # Clean up temp file
         if temp_path and os.path.exists(temp_path):
             try:
                 os.remove(temp_path)
