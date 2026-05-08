@@ -92,16 +92,17 @@ class LWPolylineCalculator(BaseCalculator):
         total = 0.0
         for i in range(len(filtered) - 1):
             x1, y1, bulge = filtered[i]
-            x2, y2 = filtered[i + 1]
+            # Для конечной точки bulge не нужен, получаем только координаты
+            x2, y2, _ = filtered[i + 1]
             if not (math.isfinite(x1) and math.isfinite(y1) and math.isfinite(bulge) and
                     math.isfinite(x2) and math.isfinite(y2)):
                 continue
             total += bulge_arc_length(x1, y1, x2, y2, bulge)
 
-        # Замыкающий сегмент
+        # Замыкающий сегмент: bulge последней вершины применяется к сегменту последняя→первая
         if entity.closed and len(filtered) > 1:
             x1, y1, bulge = filtered[-1]
-            x2, y2 = filtered[0]
+            x2, y2, _ = filtered[0]
             if (math.isfinite(x1) and math.isfinite(y1) and math.isfinite(bulge) and
                     math.isfinite(x2) and math.isfinite(y2)):
                 total += bulge_arc_length(x1, y1, x2, y2, bulge)
