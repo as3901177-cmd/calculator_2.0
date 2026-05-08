@@ -176,6 +176,7 @@ def _render_visualization(doc, objects_data, collector):
                             horizontal=True)
     use_original_colors = display_mode == "Исходные цвета"
     show_chains = display_mode == "Визуализация цепей"
+    show_error_labels = display_mode == "Индикация ошибок"
 
     show_markers = st.checkbox("🔴 Показать маркеры", value=True)
     font_size_multiplier = st.slider("📏 Размер шрифта", 0.5, 3.0, 1.0, 0.1) if show_markers else 1.0
@@ -184,7 +185,8 @@ def _render_visualization(doc, objects_data, collector):
         fig, error_msg = visualize_dxf_with_status_indicators(
             doc, objects_data, collector,
             show_markers, font_size_multiplier,
-            use_original_colors, show_chains
+            use_original_colors, show_chains,
+            show_error_labels=show_error_labels
         )
         if fig is not None:
             st.pyplot(fig, use_container_width=True)
