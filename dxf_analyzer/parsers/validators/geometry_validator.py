@@ -1,5 +1,9 @@
 """
 Централизованный валидатор геометрии объектов DXF.
+
+Все проверки, относящиеся к корректности примитивов (вырожденность,
+конечность координат, замкнутость, предельные размеры, дубликаты вершин,
+самопересечения), собраны здесь.
 """
 
 import math
@@ -8,17 +12,30 @@ from typing import List, Tuple, Any, Optional
 from ...core.config import TOLERANCE
 from ...geometry.transforms import get_endpoints, distance_between_points
 
+# Попытка импорта Shapely для проверки самопересечений
+try:
+    from shapely.geometry import Polygon as ShapelyPolygon, LineString
+    from shapely.validation import explain_validity
+    SHAPELY_AVAILABLE = True
+except ImportError:
+    SHAPELY_AVAILABLE = False
+    ShapelyPolygon = None
+    LineString = None
+
 
 class GeometryIssue:
     def __init__(self, level: str, message: str, code: str = ""):
-        self.level = level
+        self.level = level          # "error", "warning", "info"
         self.message = message
         self.code = code
 
 
 class GeometryValidator:
     MAX_COORDINATE = 1e7
-    MIN_POSITIVE = 1e-12       # очень малый, но >0
+    MIN_POSITIVE = 1e-12
+    DUPLICATE_VERTEX_TOLERANCE = 1e-3   # мм – расстояние, при котором вершины считаются дубликатами
+    NEAR_CLOSURE_INFO_TOLERANCE = 10 * TOLERANCE  # 1 мм – если концы открытой полилинии ближе этого, выдаём info
+    VERY_SMALL_LENGTH_THRESHOLD = 0.01   # мм – длина для предупреждения "очень маленький объект"
 
     @staticmethod
     def validate(entity: Any) -> Tuple[bool, List[GeometryIssue]]:
@@ -77,9 +94,47 @@ class GeometryValidator:
                         issues.append(GeometryIssue("warning",
                             f"Polyline closed flag is True but endpoints are {dist:.3f} mm apart",
                             "ClosureDiscrepancy"))
+                    elif dist < GeometryValidator.NEAR_CLOSURE_INFO_TOLERANCE:
+                        # почти замкнуто – информируем
+                        issues.append(GeometryIssue("info",
+                            f"Polyline endpoints are {dist:.3f} mm apart, consider closing",
+                            "NearlyClosed"))
                     return False
             return closed_flag
         return False
+
+    @staticmethod
+    def _check_duplicate_vertices(points_xy: List[Tuple[float, float]], issues):
+        """Поиск последовательных дублирующихся вершин."""
+        for i in range(len(points_xy) - 1):
+            dist = math.hypot(points_xy[i+1][0] - points_xy[i][0],
+                              points_xy[i+1][1] - points_xy[i][1])
+            if dist < GeometryValidator.DUPLICATE_VERTEX_TOLERANCE:
+                issues.append(GeometryIssue("warning",
+                    f"Duplicate vertex at index {i+1} (distance {dist:.6f} mm)",
+                    "DuplicateVertex"))
+                return  # одного предупреждения достаточно
+
+    @staticmethod
+    def _check_self_intersection(entity, polyline_points_xy, issues):
+        """Проверка самопересечения замкнутой полилинии (только при наличии Shapely)."""
+        if not SHAPELY_AVAILABLE:
+            return
+        try:
+            # Определяем, замкнута ли полилиния (используем результаты _check_closure, 
+            # но здесь мы вызываем упрощённо – если не замкнута, не проверяем)
+            closed = entity.closed if entity.dxftype() == 'LWPOLYLINE' else entity.is_closed
+            if not closed:
+                return
+            # Создаём Shapely Polygon
+            poly = ShapelyPolygon(polyline_points_xy)
+            if not poly.is_valid:
+                reason = explain_validity(poly)
+                issues.append(GeometryIssue("warning",
+                    f"Self-intersecting or invalid polygon: {reason}",
+                    "SelfIntersection"))
+        except Exception:
+            pass
 
     # ---------- per-type ----------
     @staticmethod
@@ -135,6 +190,8 @@ class GeometryValidator:
             return False
         GeometryValidator._check_max_coordinate(coords, issues)
         GeometryValidator._check_closure(entity, issues)
+        GeometryValidator._check_duplicate_vertices(coords, issues)
+        # Самопересечение для замкнутых 3D полилиний пропускаем (редко)
         return True
 
     @staticmethod
@@ -146,6 +203,8 @@ class GeometryValidator:
         if not GeometryValidator._check_finite_coords(coords, issues):
             return False
         GeometryValidator._check_max_coordinate(coords, issues)
+
+        # Проверка bulge на конечность
         try:
             points_b = list(entity.get_points('xyb'))
             for _, _, bulge in points_b:
@@ -153,7 +212,10 @@ class GeometryValidator:
                     issues.append(GeometryIssue("warning", "Non-finite bulge in LWPOLYLINE", "NonFiniteBulge"))
         except Exception:
             pass
+
         GeometryValidator._check_closure(entity, issues)
+        GeometryValidator._check_duplicate_vertices(coords, issues)
+        GeometryValidator._check_self_intersection(entity, coords, issues)
         return True
 
     @staticmethod
