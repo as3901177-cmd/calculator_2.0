@@ -11,21 +11,11 @@ from ..core.config import MIN_LENGTH, ZERO_LENGTH_TYPES, SILENT_SKIP_TYPES
 from ..calculators.registry import get_calculator
 from ..utils.layer_utils import get_layer_info
 from ..utils.calculation_utils import calc_entity_safe
-from ..geometry.transforms import get_entity_center
-from .validators.geometry_validator import GeometryValidator, GeometryIssue
+from ..geometry.transforms import get_entity_center, validate_closure
+from .validators.geometry_validator import GeometryValidator
 
 
 def extract_entities(doc: Drawing, collector: ErrorCollector) -> List[DXFObject]:
-    """
-    Extract and process entities from DXF modelspace
-
-    Args:
-        doc: ezdxf document
-        collector: Error collector
-
-    Returns:
-        List[DXFObject]: List of processed objects
-    """
     msp = doc.modelspace()
     objects_data: List[DXFObject] = []
 
@@ -38,58 +28,54 @@ def extract_entities(doc: Drawing, collector: ErrorCollector) -> List[DXFObject]
         real_object_num += 1
         layer, color = get_layer_info(entity)
 
-        # Check if calculator exists
+        # --- Проверка наличия калькулятора ---
         if not get_calculator(entity_type):
             if entity_type not in SILENT_SKIP_TYPES:
                 skipped_types.add(entity_type)
+                collector.add_info(entity_type, real_object_num,
+                                   f"Тип '{entity_type}' пропущен (нет калькулятора)")
             continue
 
-        # ---- Централизованная геометрическая валидация ----
+        # --- Геометрическая валидация ---
         geom_valid, geom_issues = GeometryValidator.validate(entity)
+        collector.add_info(entity_type, real_object_num,
+                           f"Геом. валидация: {'ОК' if geom_valid else 'ПРОВАЛ'}")
+        for issue in geom_issues:
+            if issue.level == "error":
+                collector.add_error(entity_type, real_object_num, issue.message, issue.code)
+            elif issue.level == "warning":
+                collector.add_warning(entity_type, real_object_num, issue.message, issue.code)
+            else:
+                collector.add_info(entity_type, real_object_num, issue.message)
+
         if not geom_valid:
-            # Объект не прошёл базовую проверку – пропускаем и записываем ошибки
-            for issue in geom_issues:
-                if issue.level == "error":
-                    collector.add_error(entity_type, real_object_num, issue.message, issue.code)
-                else:
-                    collector.add_warning(entity_type, real_object_num, issue.message, issue.code)
+            # Объект не прошёл базовую проверку – пропускаем
             continue
 
-        # Добавляем предупреждения (не ошибки) в коллектор
-        for issue in geom_issues:
-            if issue.level in ("warning", "info"):
-                collector.add_warning(entity_type, real_object_num, issue.message, issue.code)
-
-        # Получаем фактический признак замкнутости из GeometryValidator, 
-        # чтобы передать в DXFObject (валидатор его определил через _check_closure)
-        # Примечание: GeometryValidator.validate не возвращает is_closed отдельно,
-        # но мы можем получить его специальным вызовом или положиться на validate_closure.
-        # Чтобы не усложнять, вызовем старый validate_closure (он теперь внутри валидатора,
-        # но мы можем его использовать). Однако сейчас мы можем просто вызвать
-        # GeometryValidator._check_closure отдельно? Не очень красиво.
-        # Решение: оставим импорт validate_closure из transforms и будем использовать его.
-        # В будущем можно расширить GeometryValidator, чтобы возвращать и флаг замкнутости.
-        from ..geometry.transforms import validate_closure
+        # --- Замкнутость ---
         is_closed, closure_warn = validate_closure(entity)
         if closure_warn:
             collector.add_warning(entity_type, real_object_num, closure_warn, "ClosureDiscrepancy")
-        # -------------------------------------------------
+        collector.add_info(entity_type, real_object_num,
+                           f"Замкнутость: {'да' if is_closed else 'нет'}")
 
-        # Calculate length
+        # --- Расчёт длины ---
         length, status, issue_desc = calc_entity_safe(
             entity_type, entity, real_object_num, collector
         )
+        collector.add_info(entity_type, real_object_num,
+                           f"Длина: {length:.4f} мм, статус: {status.value}")
 
-        # Skip zero-length objects
+        # --- Фильтрация нулевой длины ---
         if length < MIN_LENGTH:
             if entity_type not in ZERO_LENGTH_TYPES:
-                collector.add_skipped(entity_type, real_object_num, f"Zero length: {length:.6f}")
+                collector.add_skipped(entity_type, real_object_num,
+                                      f"Нулевая длина ({length:.6f} мм)")
             continue
 
         calc_object_num += 1
         center = get_entity_center(entity)
 
-        # Create DXF object
         dxf_obj = DXFObject(
             num=calc_object_num,
             real_num=real_object_num,
@@ -106,11 +92,11 @@ def extract_entities(doc: Drawing, collector: ErrorCollector) -> List[DXFObject]
             is_closed=is_closed,
             chain_id=-1
         )
-
         objects_data.append(dxf_obj)
+        collector.add_info(entity_type, real_object_num,
+                           f"Добавлен в список объектов (#{calc_object_num})")
 
-    # Report skipped types
     if skipped_types:
-        collector.add_info('PARSER', 0, f"Skipped types: {', '.join(sorted(skipped_types))}")
+        collector.add_info('PARSER', 0, f"Пропущенные типы: {', '.join(sorted(skipped_types))}")
 
     return objects_data
