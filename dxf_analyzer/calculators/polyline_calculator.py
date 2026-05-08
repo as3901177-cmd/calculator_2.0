@@ -34,6 +34,9 @@ class PolylineCalculator(BaseCalculator):
 
         for i in range(len(points) - 1):
             p1, p2 = points[i], points[i + 1]
+            if not (math.isfinite(p1.x) and math.isfinite(p1.y) and
+                    math.isfinite(p2.x) and math.isfinite(p2.y)):
+                continue
             total += math.sqrt(
                 (p2.x - p1.x) ** 2 +
                 (p2.y - p1.y) ** 2 +
@@ -43,11 +46,13 @@ class PolylineCalculator(BaseCalculator):
         # Замыкающий сегмент
         if entity.is_closed and len(points) > 1:
             p1, p2 = points[-1], points[0]
-            total += math.sqrt(
-                (p2.x - p1.x) ** 2 +
-                (p2.y - p1.y) ** 2 +
-                (p2.z - p1.z) ** 2
-            )
+            if (math.isfinite(p1.x) and math.isfinite(p1.y) and
+                    math.isfinite(p2.x) and math.isfinite(p2.y)):
+                total += math.sqrt(
+                    (p2.x - p1.x) ** 2 +
+                    (p2.y - p1.y) ** 2 +
+                    (p2.z - p1.z) ** 2
+                )
 
         return total
 
@@ -66,10 +71,7 @@ class LWPolylineCalculator(BaseCalculator):
 
     def calculate(self, entity: Any) -> float:
         """Вычислить длину LWPOLYLINE с учётом дуговых сегментов"""
-        total = 0.0
-
         try:
-            # 'xyb' → список (x, y, bulge) для каждой вершины
             points: List[Tuple[float, float, float]] = list(
                 entity.get_points('xyb')
             )
@@ -79,27 +81,29 @@ class LWPolylineCalculator(BaseCalculator):
         if len(points) < 2:
             return 0.0
 
-        # Сегменты между соседними вершинами
-        # bulge вершины i применяется к сегменту i → i+1
-        for i in range(len(points) - 1):
-            x1, y1, bulge = (
-                float(points[i][0]),
-                float(points[i][1]),
-                float(points[i][2]),
-            )
-            x2, y2 = float(points[i + 1][0]), float(points[i + 1][1])
+        # Удаление дублирующихся вершин (расстояние < 1e-6)
+        filtered = [points[0]]
+        for p in points[1:]:
+            if math.hypot(p[0] - filtered[-1][0], p[1] - filtered[-1][1]) > 1e-6:
+                filtered.append(p)
+        if len(filtered) < 2:
+            return 0.0
 
+        total = 0.0
+        for i in range(len(filtered) - 1):
+            x1, y1, bulge = filtered[i]
+            x2, y2 = filtered[i + 1]
+            if not (math.isfinite(x1) and math.isfinite(y1) and math.isfinite(bulge) and
+                    math.isfinite(x2) and math.isfinite(y2)):
+                continue
             total += bulge_arc_length(x1, y1, x2, y2, bulge)
 
-        # Замыкающий сегмент: bulge последней вершины → первой
-        if entity.closed and len(points) > 1:
-            x1, y1, bulge = (
-                float(points[-1][0]),
-                float(points[-1][1]),
-                float(points[-1][2]),
-            )
-            x2, y2 = float(points[0][0]), float(points[0][1])
-
-            total += bulge_arc_length(x1, y1, x2, y2, bulge)
+        # Замыкающий сегмент
+        if entity.closed and len(filtered) > 1:
+            x1, y1, bulge = filtered[-1]
+            x2, y2 = filtered[0]
+            if (math.isfinite(x1) and math.isfinite(y1) and math.isfinite(bulge) and
+                    math.isfinite(x2) and math.isfinite(y2)):
+                total += bulge_arc_length(x1, y1, x2, y2, bulge)
 
         return total
