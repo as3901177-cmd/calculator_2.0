@@ -197,3 +197,24 @@ def distance_between_points(p1: Tuple[float, float], p2: Tuple[float, float]) ->
         float: Distance
     """
     return math.sqrt((p2[0] - p1[0])**2 + (p2[1] - p1[1])**2)
+
+
+def get_endpoints_force(entity: Any) -> Optional[Tuple[Tuple[float, float], Tuple[float, float]]]:
+    """
+    Принудительно вернуть координаты начала и конца, игнорируя флаг closed.
+    Нужно для отображения разрывов у замкнутых по флагу полилиний.
+    """
+    try:
+        entity_type = entity.dxftype()
+        if entity_type == 'LWPOLYLINE':
+            points = list(entity.get_points('xy'))
+            if len(points) >= 2:
+                return (points[0][0], points[0][1]), (points[-1][0], points[-1][1])
+        elif entity_type == 'POLYLINE':
+            points = list(entity.points())
+            if len(points) >= 2:
+                return (points[0].x, points[0].y), (points[-1].x, points[-1].y)
+        # Для остальных типов возвращаем обычные концы
+        return get_endpoints(entity)
+    except Exception:
+        return None
