@@ -5,6 +5,7 @@ from .transforms import (
     check_is_closed,
     validate_closure,
     get_endpoints,
+    get_endpoints_force,
     distance_between_points
 )
 from .connectivity import build_connectivity_graph, find_connected_chains
@@ -13,7 +14,7 @@ from .chain_builder import assign_chain_ids
 
 __all__ = [
     'get_entity_center', 'check_is_closed', 'validate_closure',
-    'get_endpoints', 'distance_between_points',
+    'get_endpoints', 'get_endpoints_force', 'distance_between_points',
     'build_connectivity_graph', 'find_connected_chains',
     'count_piercings_advanced', 'assign_chain_ids'
 ]
