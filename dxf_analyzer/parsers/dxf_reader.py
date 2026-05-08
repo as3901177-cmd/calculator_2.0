@@ -40,7 +40,7 @@ def read_dxf_file(file_buffer, collector: ErrorCollector) -> Tuple[Optional[Draw
 
         dxf_version = doc.dxfversion
         if dxf_version < 'AC1018':
-            collector.add_warning('FILE', 0, f"Old DXF version: {dxf_version}", "DXFVersionWarning")
+            collector.add_warning('FILE', 0, f"Старая версия DXF: {dxf_version}. Возможны незначительные расхождения.", "DXFVersionWarning")
 
         # Масштабирование единиц измерения
         insunits = doc.header.get('$INSUNITS', 4)
