@@ -15,6 +15,7 @@ from ...geometry.piercing_counter import count_piercings_advanced
 from ...geometry.contour_builder import chain_to_polygon
 from ...geometry.contour_classifier import classify_contours
 from ...geometry.contour_validator import validate_all_contours
+from ...geometry.contour_quality_checker import generate_quality_report
 from ...visualization.renderers.matplotlib_renderer import visualize_dxf_with_status_indicators
 from ...export.csv_exporter import export_to_csv, export_statistics_to_csv
 from ..components.error_reporter import show_error_report
@@ -130,10 +131,23 @@ def _process_file(uploaded_file):
                                 st.warning(f"🟡 {msg}")
                             else:
                                 st.info(f"ℹ️ {msg}")
+
+                    # === Проверка качества контуров (висячие линии и т.д.) ===
+                    quality_report = generate_quality_report(
+                        chain_polygons,
+                        fixed_polygons,
+                        piercing_details,
+                        objects_data,
+                        external_id,
+                        internal_ids
+                    )
+                    st.session_state['quality_report'] = quality_report
+
                 else:
                     st.session_state['contour_classification'] = None
                     st.session_state['fixed_polygons'] = None
                     st.session_state['validation_messages'] = None
+                    st.session_state['quality_report'] = None
 
                 _display_results(objects_data, total_length, piercing_count,
                                  piercing_details, stats, color_stats, doc, collector)
@@ -197,7 +211,7 @@ def _display_results(objects_data, total_length, piercing_count,
                 for w in warns:
                     st.warning(f"🔸 Контур #{cid}: {w}")
 
-    # Отображение сообщений валидации (если ещё не показаны)
+    # Отображение сообщений валидации
     if 'validation_messages' in st.session_state and st.session_state['validation_messages']:
         validation_msgs = st.session_state['validation_messages']
         with st.expander("🔍 Результаты валидации контуров", expanded=False):
@@ -209,6 +223,32 @@ def _display_results(objects_data, total_length, piercing_count,
                         st.warning(msg)
                     else:
                         st.info(msg)
+
+    # Отображение сводного отчёта о качестве контуров
+    if 'quality_report' in st.session_state and st.session_state['quality_report']:
+        qr = st.session_state['quality_report']
+        with st.expander("📋 Сводный отчёт о качестве контуров", expanded=True):
+            summ = qr['summary']
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("Замкнутых контуров", summ['total_closed'])
+            col2.metric("Валидных контуров", summ['valid_closed'])
+            col3.metric("Висячих линий", summ['hanging_count'])
+            col4.metric("Не привязанных объектов", summ['unassigned_count'])
+
+            if summ['hanging_count'] > 0:
+                st.subheader("🔗 Висячие линии / разомкнутые цепи")
+                for h in qr['hanging_objects']:
+                    gap_str = f" (зазор: {h['gap_to_close']:.2f} мм)" if h['gap_to_close'] else ""
+                    st.write(f"Цепь #{h['chain_id']}: {h['object_count']} объектов, длина {h['total_length']:.2f} мм{gap_str}")
+                    if h['can_autoclose']:
+                        st.caption("✅ Можно замкнуть автоматически (зазор < допуска)")
+                    else:
+                        st.caption("⚠️ Требуется ручная проверка")
+
+            if summ['unassigned_count'] > 0:
+                st.subheader("❓ Объекты без цепи")
+                for obj_info in qr['unassigned_objects']:
+                    st.write(f"Объект #{obj_info['num']}: {obj_info['type']}, длина {obj_info['length']:.2f} мм")
 
     st.markdown("---")
     col_left, col_right = st.columns([1, 1.5])
