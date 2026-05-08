@@ -12,6 +12,7 @@ from ...parsers.dxf_reader import read_dxf_file
 from ...parsers.entity_extractor import extract_entities
 from ...parsers.layer_analyzer import analyze_colors
 from ...geometry.piercing_counter import count_piercings_advanced
+from ...geometry.contour_builder import chain_to_polygon          # <-- новый импорт
 from ...visualization.renderers.matplotlib_renderer import visualize_dxf_with_status_indicators
 from ...export.csv_exporter import export_to_csv, export_statistics_to_csv
 from ..components.error_reporter import show_error_report
@@ -76,6 +77,25 @@ def _process_file(uploaded_file):
             if not objects_data:
                 st.warning("⚠️ В чертеже не найдено объектов для расчета")
             else:
+                # === НОВЫЙ БЛОК: Построение контуров из замкнутых цепей ===
+                from ...geometry.contour_builder import chain_to_polygon
+                chain_polygons = {}
+                for chain in piercing_details['chains']:
+                    if chain['type'] == 'closed':
+                        # получаем объекты этой цепи
+                        chain_objs = [obj for obj in objects_data if obj.chain_id == chain['chain_id']]
+                        if chain_objs:
+                            poly = chain_to_polygon(chain_objs)
+                            if poly:
+                                chain_polygons[chain['chain_id']] = poly
+                # Сохраняем в сессию Streamlit, чтобы использовать позже (например, в классификации)
+                st.session_state['chain_polygons'] = chain_polygons
+                if chain_polygons:
+                    st.success(f"✅ Построено {len(chain_polygons)} замкнутых контуров (полигонов)")
+                else:
+                    st.info("ℹ️ Замкнутые полигональные контуры не обнаружены")
+                # =============================================================
+
                 _display_results(objects_data, total_length, piercing_count,
                                  piercing_details, stats, color_stats, doc, collector)
         except Exception as e:
