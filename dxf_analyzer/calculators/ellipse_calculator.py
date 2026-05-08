@@ -20,6 +20,9 @@ class EllipseCalculator(BaseCalculator):
             a = math.hypot(major_axis.x, major_axis.y)
             b = a * ratio
 
+            if a <= 0.0 or ratio <= 0.0 or not math.isfinite(a) or not math.isfinite(ratio):
+                return 0.0
+
             # Параметры дуги
             start = getattr(entity.dxf, 'start_param', 0.0)
             end = getattr(entity.dxf, 'end_param', 2 * math.pi)
