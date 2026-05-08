@@ -105,11 +105,11 @@ def validate_closure(entity: Any) -> Tuple[bool, Optional[str]]:
 
             if dist < TOLERANCE:
                 if not closed_flag:
-                    warning = "Polyline is geometrically closed but closed flag is False"
+                    warning = "Полилиния геометрически замкнута (концы совпадают), но флаг замкнутости не установлен."
                 return True, warning
             else:
                 if closed_flag:
-                    warning = f"Polyline closed flag is True but endpoints are {dist:.3f} mm apart"
+                    warning = f"Полилиния помечена как замкнутая, но концы разнесены на {dist:.3f} мм."
                 return False, warning
 
         return False, None
