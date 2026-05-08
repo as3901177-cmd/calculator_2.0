@@ -12,7 +12,8 @@ from ...parsers.dxf_reader import read_dxf_file
 from ...parsers.entity_extractor import extract_entities
 from ...parsers.layer_analyzer import analyze_colors
 from ...geometry.piercing_counter import count_piercings_advanced
-from ...geometry.contour_builder import chain_to_polygon          # <-- новый импорт
+from ...geometry.contour_builder import chain_to_polygon
+from ...geometry.contour_classifier import classify_contours
 from ...visualization.renderers.matplotlib_renderer import visualize_dxf_with_status_indicators
 from ...export.csv_exporter import export_to_csv, export_statistics_to_csv
 from ..components.error_reporter import show_error_report
@@ -77,24 +78,41 @@ def _process_file(uploaded_file):
             if not objects_data:
                 st.warning("⚠️ В чертеже не найдено объектов для расчета")
             else:
-                # === НОВЫЙ БЛОК: Построение контуров из замкнутых цепей ===
-                from ...geometry.contour_builder import chain_to_polygon
+                # === Построение замкнутых контуров из цепей ===
                 chain_polygons = {}
                 for chain in piercing_details['chains']:
                     if chain['type'] == 'closed':
-                        # получаем объекты этой цепи
                         chain_objs = [obj for obj in objects_data if obj.chain_id == chain['chain_id']]
                         if chain_objs:
                             poly = chain_to_polygon(chain_objs)
                             if poly:
                                 chain_polygons[chain['chain_id']] = poly
-                # Сохраняем в сессию Streamlit, чтобы использовать позже (например, в классификации)
                 st.session_state['chain_polygons'] = chain_polygons
+
                 if chain_polygons:
                     st.success(f"✅ Построено {len(chain_polygons)} замкнутых контуров (полигонов)")
                 else:
                     st.info("ℹ️ Замкнутые полигональные контуры не обнаружены")
-                # =============================================================
+
+                # === Классификация контуров (внешний / внутренние) ===
+                if chain_polygons:
+                    external_id, internal_ids, contour_warnings = classify_contours(chain_polygons)
+                    st.session_state['contour_classification'] = {
+                        'external_id': external_id,
+                        'internal_ids': internal_ids,
+                        'warnings': contour_warnings
+                    }
+                    if external_id is not None:
+                        st.success(f"🎯 Внешний контур: цепь #{external_id}, "
+                                   f"внутренних отверстий: {len(internal_ids)}")
+                    else:
+                        st.warning("⚠️ Не удалось определить внешний контур")
+                    # Выводим предупреждения классификации
+                    for cid, warns in contour_warnings.items():
+                        for w in warns:
+                            st.warning(f"🔸 Контур #{cid}: {w}")
+                else:
+                    st.session_state['contour_classification'] = None
 
                 _display_results(objects_data, total_length, piercing_count,
                                  piercing_details, stats, color_stats, doc, collector)
@@ -140,6 +158,23 @@ def _display_results(objects_data, total_length, piercing_count,
 
     if piercing_details['chains']:
         _display_chain_details(piercing_details['chains'])
+
+    # Отображение классификации контуров
+    if 'contour_classification' in st.session_state and st.session_state['contour_classification']:
+        classif = st.session_state['contour_classification']
+        with st.expander("📌 Классификация контуров", expanded=True):
+            if classif['external_id'] is not None:
+                st.markdown(f"**Внешний контур:** цепь `{classif['external_id']}`")
+                if classif['internal_ids']:
+                    st.markdown(f"**Внутренние отверстия:** цепи {', '.join(map(str, classif['internal_ids']))}")
+                else:
+                    st.markdown("*Внутренние отверстия не найдены*")
+            else:
+                st.warning("Классификация не выполнена")
+            # Предупреждения классификации уже показаны ранее, но можно продублировать
+            for cid, warns in classif['warnings'].items():
+                for w in warns:
+                    st.warning(f"🔸 Контур #{cid}: {w}")
 
     st.markdown("---")
     col_left, col_right = st.columns([1, 1.5])
