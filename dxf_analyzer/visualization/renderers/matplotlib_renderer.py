@@ -5,7 +5,6 @@ Matplotlib-based DXF visualization
 import math
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
-import matplotlib.lines as mlines
 import numpy as np
 from typing import List, Tuple, Optional, Any
 from matplotlib.figure import Figure
@@ -280,23 +279,17 @@ class MatplotlibRenderer:
             if obj.center is None:
                 continue
             x, y = obj.center
-            # Определяем цвет аннотации
+            # Цвет аннотации по статусу объекта
             if obj.status == ObjectStatus.ERROR:
                 color = 'red'
             elif obj.status == ObjectStatus.WARNING:
                 color = 'darkorange'
             else:
-                color = 'darkgoldenrod'  # для NORMAL с issue_description
-            # Текст аннотации: статус + коды проблем
-            text_parts = []
-            if obj.status != ObjectStatus.NORMAL:
-                text_parts.append(obj.status.value.upper())
-            if obj.issue_description:
-                text_parts.append(obj.issue_description)
-            if not text_parts:
+                color = 'darkgoldenrod'
+            # Текст аннотации – только русское описание проблемы (без кодов статуса)
+            label = obj.issue_description if obj.issue_description else ""
+            if not label:
                 continue
-            label = " ".join(text_parts)
-            # Смещённая позиция, чтобы не накладывалось на маркер
             offset_x, offset_y = 15, 15
             ax.annotate(
                 label,
