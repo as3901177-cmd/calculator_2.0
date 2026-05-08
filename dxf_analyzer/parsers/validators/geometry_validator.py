@@ -25,8 +25,8 @@ class GeometryValidator:
 
     # Порог для предупреждения о слишком больших координатах (мм)
     MAX_COORDINATE = 1e7
-    # Допустимая погрешность для сравнения углов и расстояний
-    EPS = 1e-9
+    # Очень маленький порог, чтобы отсечь действительно нулевые/отрицательные размеры
+    MIN_POSITIVE = 1e-12
 
     @staticmethod
     def validate(entity: Any) -> Tuple[bool, List[GeometryIssue]]:
@@ -67,7 +67,7 @@ class GeometryValidator:
                 if abs(val) > GeometryValidator.MAX_COORDINATE:
                     issues.append(GeometryIssue("warning",
                         f"Very large coordinate ({val:.0f})", "LargeCoordinate"))
-                    return  # достаточно одного предупреждения
+                    return
 
     @staticmethod
     def _check_closure(entity, issues: List[GeometryIssue]) -> bool:
@@ -76,8 +76,7 @@ class GeometryValidator:
         if entity_type == 'CIRCLE':
             return True
         if entity_type == 'ELLIPSE':
-            # для эллипса отдельная логика, вызывается в соответствующем валидаторе
-            return False
+            return False   # замкнутость эллипса проверяется отдельно
         if entity_type in ('POLYLINE', 'LWPOLYLINE'):
             closed_flag = entity.is_closed if entity_type == 'POLYLINE' else entity.closed
             endpoints = get_endpoints(entity)
@@ -107,7 +106,6 @@ class GeometryValidator:
         if not GeometryValidator._check_finite_coords(coords, issues):
             return False
         GeometryValidator._check_max_coordinate(coords, issues)
-        # Длина будет проверена позже, здесь только геометрия
         return True
 
     @staticmethod
@@ -117,7 +115,8 @@ class GeometryValidator:
         if not math.isfinite(radius) or not math.isfinite(center.x) or not math.isfinite(center.y):
             issues.append(GeometryIssue("error", "Non-finite circle parameters", "NonFiniteCoord"))
             return False
-        if radius <= GeometryValidator.EPS:
+        # Отбрасываем только явно неположительный радиус
+        if radius <= GeometryValidator.MIN_POSITIVE:
             issues.append(GeometryIssue("error", "Degenerate circle (radius <= 0)", "DegenerateRadius"))
             return False
         GeometryValidator._check_max_coordinate([(center.x, center.y)], issues)
@@ -130,7 +129,7 @@ class GeometryValidator:
         if not math.isfinite(radius) or not math.isfinite(center.x) or not math.isfinite(center.y):
             issues.append(GeometryIssue("error", "Non-finite arc parameters", "NonFiniteCoord"))
             return False
-        if radius <= GeometryValidator.EPS:
+        if radius <= GeometryValidator.MIN_POSITIVE:
             issues.append(GeometryIssue("error", "Degenerate arc (radius <= 0)", "DegenerateRadius"))
             return False
         start_angle = math.radians(entity.dxf.start_angle)
@@ -138,11 +137,10 @@ class GeometryValidator:
         if not math.isfinite(start_angle) or not math.isfinite(end_angle):
             issues.append(GeometryIssue("error", "Non-finite arc angles", "NonFiniteCoord"))
             return False
-        diff = abs(end_angle - start_angle)
-        # нормализация углов уже не требуется, только проверка на == 0
-        if diff < GeometryValidator.EPS and diff >= 0:
-            issues.append(GeometryIssue("error", "Degenerate arc (start_angle == end_angle)", "DegenerateAngle"))
-            return False
+        # Допускаем практически нулевую разницу углов (пусть длина будет около 0)
+        # Не блокируем, просто предупреждаем
+        if abs(end_angle - start_angle) < GeometryValidator.MIN_POSITIVE:
+            issues.append(GeometryIssue("warning", "Arc has extremely small angle", "SmallAngle"))
         GeometryValidator._check_max_coordinate([(center.x, center.y)], issues)
         return True
 
@@ -151,7 +149,7 @@ class GeometryValidator:
         """3D POLYLINE"""
         points = list(entity.points())
         if len(points) < 2:
-            return True  # будет отсеян по длине позже
+            return True   # будет отсеян по длине позже
         coords = [(p.x, p.y) for p in points]
         if not GeometryValidator._check_finite_coords(coords, issues):
             return False
@@ -182,7 +180,6 @@ class GeometryValidator:
 
     @staticmethod
     def _validate_spline(entity, issues: List[GeometryIssue]) -> bool:
-        # Проверяем контрольные точки (если есть)
         try:
             ctrl_pts = list(entity.control_points)
             coords = [(p.x, p.y) for p in ctrl_pts]
@@ -191,7 +188,6 @@ class GeometryValidator:
             GeometryValidator._check_max_coordinate(coords, issues)
         except Exception:
             pass
-        # Дополнительно можно проверить flattening
         return True
 
     @staticmethod
@@ -203,19 +199,23 @@ class GeometryValidator:
             issues.append(GeometryIssue("error", "Non-finite ellipse parameters", "NonFiniteCoord"))
             return False
         a = math.hypot(major.x, major.y)
-        if a <= GeometryValidator.EPS or ratio <= GeometryValidator.EPS:
+        b = a * ratio
+        # Допустим очень маленькую полуось, но не нулевую/отрицательную
+        if a <= GeometryValidator.MIN_POSITIVE or ratio <= GeometryValidator.MIN_POSITIVE:
             issues.append(GeometryIssue("error", "Degenerate ellipse (semi-axis <= 0)", "DegenerateRadius"))
             return False
-        # Замкнутость эллипса можно проверить по параметрам
         start = getattr(entity.dxf, 'start_param', 0.0)
         end = getattr(entity.dxf, 'end_param', 2*math.pi)
         if not math.isfinite(start) or not math.isfinite(end):
             issues.append(GeometryIssue("error", "Non-finite ellipse parameters", "NonFiniteCoord"))
             return False
         GeometryValidator._check_max_coordinate([(center.x, center.y)], issues)
+        # Предупреждение, если эллипс не замкнут (не полный)
+        if abs(abs(end - start) - 2*math.pi) > 0.01:
+            issues.append(GeometryIssue("info", "Ellipse is not a closed contour", "OpenEllipse"))
         return True
 
 
-# Для удобства можно оставить функцию-обёртку
+# Функция-обёртка для удобства
 def validate_entity(entity) -> Tuple[bool, List[GeometryIssue]]:
     return GeometryValidator.validate(entity)
