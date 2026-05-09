@@ -178,14 +178,9 @@ def _apply_auto_fixes(objects_data, piercing_details, quality_report, collector)
     # 1. Замыкание висячих цепей, где зазор < допуск
     for h in quality_report['hanging_objects']:
         if h['can_autoclose']:
-            # Получаем объекты этой цепи
             chain_objs = [obj for obj in objects_data if obj.chain_id == h['chain_id']]
-            # Вызываем auto_close_chain
             new_chain = auto_close_chain(chain_objs, h['gap_to_close'])
             if new_chain is not None:
-                # Заменяем объекты в общем списке
-                # Удалим старые и добавим новые ( но проще пересоздать список)
-                # Так как объекты уже в objects_data, удалим старые и добавим новые
                 objects_data = [obj for obj in objects_data if obj.chain_id != h['chain_id']]
                 objects_data.extend(new_chain)
                 any_fix = True
@@ -201,7 +196,6 @@ def _apply_auto_fixes(objects_data, piercing_details, quality_report, collector)
         st.success(f"🔧 Удалено {removed} дублирующихся объектов")
         collector.add_info('AUTOFIX', 0, f"Удалено {removed} дублирующихся объектов")
 
-    # Сохраняем флаг в session_state, чтобы потом повторно запустить pipeline
     st.session_state['auto_fix_applied'] = any_fix
     return objects_data
 
@@ -351,22 +345,43 @@ def _render_export_buttons(objects_data, stats):
 
 def _render_visualization(doc, objects_data, collector):
     st.markdown("### 🎨 Чертеж с цветовой индикацией")
+    # ✅ Пункт 2: добавлена опция "Контуры детали"
     display_mode = st.radio("Режим отображения:",
-                            options=["Исходные цвета", "Индикация ошибок", "Визуализация цепей"],
+                            options=["Исходные цвета", "Индикация ошибок", "Визуализация цепей", "🧩 Контуры детали"],
                             horizontal=True)
     use_original_colors = display_mode == "Исходные цвета"
     show_chains = display_mode == "Визуализация цепей"
     show_error_labels = display_mode == "Индикация ошибок"
+    show_contours = display_mode == "🧩 Контуры детали"
 
     show_markers = st.checkbox("🔴 Показать маркеры", value=True)
     font_size_multiplier = st.slider("📏 Размер шрифта", 0.5, 3.0, 1.0, 0.1) if show_markers else 1.0
 
+    # Сбор данных контуров для режима контуров
+    contour_data = None
+    if show_contours:
+        if 'chain_polygons' in st.session_state:
+            contour_data = {
+                'chain_polygons': st.session_state.get('chain_polygons', {}),
+                'fixed_polygons': st.session_state.get('fixed_polygons', {}),
+                'classification': st.session_state.get('contour_classification', {}),
+                'validation_messages': st.session_state.get('validation_messages', {})
+            }
+            if not contour_data['classification'].get('external_id'):
+                st.warning("⚠️ Контуры ещё не классифицированы. Сначала выполните анализ.")
+        else:
+            st.warning("⚠️ Контуры не построены. Загрузите DXF и дождитесь анализа.")
+
     with st.spinner('Генерация визуализации...'):
         fig, error_msg = visualize_dxf_with_status_indicators(
             doc, objects_data, collector,
-            show_markers, font_size_multiplier,
-            use_original_colors, show_chains,
-            show_error_labels=show_error_labels
+            show_markers=show_markers,
+            font_size_multiplier=font_size_multiplier,
+            use_original_colors=use_original_colors,
+            show_chains=show_chains,
+            show_error_labels=show_error_labels,
+            show_contours=show_contours,
+            contour_data=contour_data
         )
         if fig is not None:
             st.pyplot(fig, use_container_width=True)
