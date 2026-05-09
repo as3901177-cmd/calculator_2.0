@@ -29,19 +29,149 @@ class TestFixturesGenerator:
         self.create_ring()
         self.create_slot()
         self.create_complex_part()
-        self.create_ellipse()          # <-- добавлен вызов
+        self.create_ellipse()
 
         print(f"\n✓ Все тестовые файлы успешно созданы в папке:\n   {self.output_dir.resolve()}")
 
-    # ... все предыдущие методы create_circle, create_rectangle и т.д. без изменений ...
+    def create_circle(self):
+        """1. Круг Ø200 мм"""
+        doc = ezdxf.new("R2010")
+        msp = doc.modelspace()
+        msp.add_circle((0, 0), radius=100)
+        doc.saveas(self.output_dir / "01_circle_d200.dxf")
+        print(f"✓ 1 Круг Ø200 мм → {2 * math.pi * 100:.3f} мм")
+
+    def create_rectangle(self):
+        """2. Прямоугольник 300×200 мм"""
+        doc = ezdxf.new("R2010")
+        msp = doc.modelspace()
+        points = [(0, 0), (300, 0), (300, 200), (0, 200)]
+        msp.add_lwpolyline(points, close=True)
+        doc.saveas(self.output_dir / "02_rectangle_300x200.dxf")
+        print(f"✓ 2 Прямоугольник 300×200 мм → {2 * (300 + 200):.3f} мм")
+
+    def create_square(self):
+        """3. Квадрат 250×250 мм"""
+        doc = ezdxf.new("R2010")
+        msp = doc.modelspace()
+        points = [(0, 0), (250, 0), (250, 250), (0, 250)]
+        msp.add_lwpolyline(points, close=True)
+        doc.saveas(self.output_dir / "03_square_250.dxf")
+        print(f"✓ 3 Квадрат 250×250 мм → {4 * 250:.3f} мм")
+
+    def create_triangle(self):
+        """4. Равносторонний треугольник со стороной 150 мм"""
+        doc = ezdxf.new("R2010")
+        msp = doc.modelspace()
+        h = 150 * math.sqrt(3) / 2
+        points = [(0, 0), (150, 0), (75, h)]
+        msp.add_lwpolyline(points, close=True)
+        doc.saveas(self.output_dir / "04_triangle_s150.dxf")
+        print(f"✓ 4 Треугольник 150 мм → {3 * 150:.3f} мм")
+
+    def create_hexagon(self):
+        """5. Шестигранник под ключ 100 мм"""
+        doc = ezdxf.new("R2010")
+        msp = doc.modelspace()
+        R = 100 / math.sqrt(3)  # радиус описанной окружности
+        points = []
+        for i in range(6):
+            angle = math.radians(60 * i)
+            points.append((R * math.cos(angle), R * math.sin(angle)))
+        msp.add_lwpolyline(points, close=True)
+        doc.saveas(self.output_dir / "05_hexagon_s100.dxf")
+        expected = 200 * math.sqrt(3)
+        print(f"✓ 5 Шестигранник 100 мм → {expected:.3f} мм")
+
+    def create_flange(self):
+        """6. Фланец Ø300 с центральным отверстием Ø100 и 4 отверстиями Ø20"""
+        doc = ezdxf.new("R2010")
+        msp = doc.modelspace()
+        msp.add_circle((0, 0), radius=150)  # внешний
+        msp.add_circle((0, 0), radius=50)   # центральное отверстие
+        for angle in (45, 135, 225, 315):
+            rad = math.radians(angle)
+            x = 100 * math.cos(rad)
+            y = 100 * math.sin(rad)
+            msp.add_circle((x, y), radius=10)
+        doc.saveas(self.output_dir / "06_flange_d300_4holes.dxf")
+        expected = 2*math.pi*150 + 2*math.pi*50 + 4*2*math.pi*10
+        print(f"✓ 6 Фланец с отверстиями → {expected:.3f} мм")
+
+    def create_bracket(self):
+        """7. L-образный кронштейн 200×150 мм с двумя отверстиями Ø16"""
+        doc = ezdxf.new("R2010")
+        msp = doc.modelspace()
+        points = [(0, 0), (200, 0), (200, 30), (30, 30), (30, 150), (0, 150)]
+        msp.add_lwpolyline(points, close=True)
+        msp.add_circle((100, 15), radius=8)
+        msp.add_circle((15, 90), radius=8)
+        doc.saveas(self.output_dir / "07_bracket_200x150.dxf")
+        # ожидаемая длина из expected_results: 700 + 2*2*pi*8 = 700 + 100.531 = 800.531
+        expected = 700 + 2 * 2 * math.pi * 8
+        print(f"✓ 7 Кронштейн → {expected:.3f} мм")
+
+    def create_ring(self):
+        """8. Кольцо внешний Ø200, внутренний Ø100"""
+        doc = ezdxf.new("R2010")
+        msp = doc.modelspace()
+        msp.add_circle((0, 0), radius=100)
+        msp.add_circle((0, 0), radius=50)
+        doc.saveas(self.output_dir / "08_ring_d200_d100.dxf")
+        expected = 2*math.pi*100 + 2*math.pi*50
+        print(f"✓ 8 Кольцо → {expected:.3f} мм")
+
+    def create_slot(self):
+        """9. Продолговатое отверстие 200×50 мм (овал)"""
+        doc = ezdxf.new("R2010")
+        msp = doc.modelspace()
+        # овал как прямоугольник с двумя полуокружностями
+        w, h = 200, 50
+        r = h / 2
+        points = [
+            (r, 0), (w - r, 0),
+            (w - r, h), (r, h)
+        ]
+        msp.add_lwpolyline(points, close=False)
+        # добавляем дуги на концах? Упростим через LWPOLYLINE с bulge
+        # но проще нарисовать прямоугольник и две дуги, но для простоты рисования используем LWPOLYLINE с bulge=1 для полукругов.
+        # Лучше нарисовать замкнутую полилинию с правильными bulge.
+        # Переопределим:
+        # Удалим предыдущий набросок и создадим правильный овал.
+        doc2 = ezdxf.new("R2010")
+        msp2 = doc2.modelspace()
+        # точки с bulge: (r,0) - линия до (w-r,0), затем bulge=1 (полукруг) до (w-r, h), затем линия до (r, h), затем bulge=1 до (r,0)
+        msp2.add_lwpolyline([
+            (r, 0, 0),
+            (w - r, 0, 1),
+            (w - r, h, 0),
+            (r, h, 1)
+        ], close=True)
+        doc2.saveas(self.output_dir / "09_slot_200x50.dxf")
+        expected = 2 * (200 - 50) + 2 * math.pi * 25
+        print(f"✓ 9 Продолговатое отверстие → {expected:.3f} мм")
+
+    def create_complex_part(self):
+        """10. Сложная деталь: пластина 300×200 с вырезом, центральным отверстием и крепежом"""
+        doc = ezdxf.new("R2010")
+        msp = doc.modelspace()
+        points = [(0, 0), (300, 0), (300, 200), (0, 200)]
+        msp.add_lwpolyline(points, close=True)
+        # вырез 50х50 в центре правой стороны
+        msp.add_lwpolyline([(250, 75), (300, 75), (300, 125), (250, 125)], close=True)
+        msp.add_circle((150, 100), radius=30)
+        msp.add_circle((20, 20), radius=5)
+        msp.add_circle((280, 180), radius=5)
+        doc.saveas(self.output_dir / "10_complex_part.dxf")
+        expected = 2*(300+200) + 2*50 + 2*math.pi*30 + 2*2*math.pi*5
+        print(f"✓ 10 Сложная деталь → {expected:.3f} мм")
 
     def create_ellipse(self):
         """11. Эллипс с полуосями 100 и 50 мм (замкнутый)"""
-        doc = ezdxf.new('R2010')
+        doc = ezdxf.new("R2010")
         msp = doc.modelspace()
-
-        a = 100.0  # большая полуось
-        b = 50.0   # малая полуось
+        a = 100.0
+        b = 50.0
         msp.add_ellipse(
             center=(0, 0),
             major_axis=(a, 0),
@@ -49,8 +179,7 @@ class TestFixturesGenerator:
             start_param=0,
             end_param=2 * math.pi
         )
-
-        # Численное интегрирование периметра (как в калькуляторе)
+        # Численное интегрирование периметра
         num_segments = 200
         dt = 2 * math.pi / num_segments
         t = 0.0
@@ -63,18 +192,13 @@ class TestFixturesGenerator:
             y_curr = b * math.sin(t)
             total_length += math.hypot(x_curr - x_prev, y_curr - y_prev)
             x_prev, y_prev = x_curr, y_curr
-
-        expected_length = total_length
-
         doc.saveas(self.output_dir / "11_ellipse_100x50.dxf")
-        print(f"✓ 11 Эллипс 100×50       → {expected_length:.3f} мм")
-        return expected_length
+        print(f"✓ 11 Эллипс 100×50 → {total_length:.3f} мм")
 
 
 def main():
     generator = TestFixturesGenerator()
     generator.create_all_fixtures()
-
     print("\n" + "=" * 70)
     print("ГЕНЕРАЦИЯ ТЕСТОВЫХ DXF ФАЙЛОВ ЗАВЕРШЕНА УСПЕШНО")
     print("=" * 70)
