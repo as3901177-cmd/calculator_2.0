@@ -4,7 +4,7 @@
 
 import streamlit as st
 import pandas as pd
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 from ...core.config import install_dependencies, MAX_FILE_SIZE_MB
 from ...core.errors import ErrorCollector
@@ -75,10 +75,13 @@ def _process_file(uploaded_file):
         try:
             doc, temp_path = read_dxf_file(uploaded_file, collector)
             objects_data = extract_entities(doc, collector)
-            # Запускаем конвейер анализа и автоисправлений
-            objects_data = _run_analysis_pipeline(objects_data, collector, doc)
-            if objects_data:
-                _display_results(*objects_data)
+            # Сохраняем исходные данные для возможности повторного анализа без перезагрузки файла
+            st.session_state['doc'] = doc
+            st.session_state['objects_data'] = objects_data
+            # Запускаем конвейер анализа (без автоисправлений)
+            result = _run_analysis_pipeline(objects_data, collector, doc)
+            if result:
+                _display_results(*result)
             else:
                 st.warning("Нет данных для отображения")
         except Exception as e:
@@ -90,7 +93,8 @@ def _process_file(uploaded_file):
 
 
 def _run_analysis_pipeline(objects_data, collector, doc):
-    """Запускает полный цикл: статистика, врезки, контуры, классификация, валидация, исправления."""
+    """Запускает полный цикл: статистика, врезки, контуры, классификация, валидация.
+    Автоисправления не применяются – они будут предложены пользователю."""
     stats, color_stats, total_length = _calculate_statistics(objects_data)
     piercing_count, piercing_details = count_piercings_advanced(objects_data, collector)
     show_error_report(collector)
@@ -155,54 +159,102 @@ def _run_analysis_pipeline(objects_data, collector, doc):
         )
         st.session_state['quality_report'] = quality_report
 
-        # === БЛОК АВТОИСПРАВЛЕНИЙ ===
-        objects_data = _apply_auto_fixes(objects_data, piercing_details, quality_report, collector)
+        # === БЛОК ПРЕДЛАГАЕМЫХ ИСПРАВЛЕНИЙ ===
+        _prepare_suggested_fixes(objects_data, quality_report)
 
-        if _fixes_applied():
-            # Если были внесены изменения, повторяем анализ полностью
-            st.info("🔄 Внесены автоисправления, пересчитываем...")
-            return _run_analysis_pipeline(objects_data, collector, doc)
     else:
         st.session_state['contour_classification'] = None
         st.session_state['fixed_polygons'] = None
         st.session_state['validation_messages'] = None
         st.session_state['quality_report'] = None
+        st.session_state['suggested_fixes'] = None
 
     return (objects_data, total_length, piercing_count, piercing_details,
             stats, color_stats, doc, collector)
 
 
-def _apply_auto_fixes(objects_data, piercing_details, quality_report, collector):
-    """Выполняет автоисправления: замыкание висячих цепей, удаление дубликатов."""
-    any_fix = False
-    # 1. Замыкание висячих цепей, где зазор < допуск
+def _prepare_suggested_fixes(objects_data, quality_report):
+    """Формирует список предлагаемых исправлений и сохраняет в st.session_state."""
+    fixes = {
+        'hanging_fixes': [],
+        'has_duplicates': False
+    }
+    # Висячие линии с возможностью автозамыкания
     for h in quality_report['hanging_objects']:
         if h['can_autoclose']:
-            chain_objs = [obj for obj in objects_data if obj.chain_id == h['chain_id']]
-            new_chain = auto_close_chain(chain_objs, h['gap_to_close'])
+            fixes['hanging_fixes'].append({
+                'chain_id': h['chain_id'],
+                'gap': h['gap_to_close'],
+                'object_count': h['object_count'],
+                'total_length': h['total_length']
+            })
+    # Проверка на дубликаты (предварительная, без фактического изменения)
+    # Просто проверяем, есть ли дубликаты по тому же критерию
+    original_count = len(objects_data)
+    dedup = remove_duplicate_entities(objects_data.copy())  # не меняем оригинал
+    if len(dedup) < original_count:
+        fixes['has_duplicates'] = True
+        fixes['duplicates_count'] = original_count - len(dedup)
+
+    if fixes['hanging_fixes'] or fixes['has_duplicates']:
+        st.session_state['suggested_fixes'] = fixes
+    else:
+        st.session_state['suggested_fixes'] = None
+
+
+def _apply_manual_fixes(selected_hanging, apply_dedup):
+    """Применяет выбранные исправления к текущему objects_data в st.session_state.
+    Возвращает обновлённый objects_data и collector с информацией."""
+    if 'doc' not in st.session_state or 'objects_data' not in st.session_state:
+        return None, None
+    objects_data = st.session_state['objects_data'].copy()
+    collector = ErrorCollector()
+
+    # 1. Замыкание выбранных цепей
+    if selected_hanging:
+        for fix in selected_hanging:
+            chain_id = fix['chain_id']
+            # Получаем объекты цепи
+            chain_objs = [obj for obj in objects_data if obj.chain_id == chain_id]
+            new_chain = auto_close_chain(chain_objs, fix['gap'])
             if new_chain is not None:
-                objects_data = [obj for obj in objects_data if obj.chain_id != h['chain_id']]
+                # Удаляем старые объекты этой цепи и добавляем новую цепь
+                objects_data = [obj for obj in objects_data if obj.chain_id != chain_id]
                 objects_data.extend(new_chain)
-                any_fix = True
-                st.success(f"🔧 Замкнута цепь #{h['chain_id']} (добавлен сегмент)")
-                collector.add_info('AUTOFIX', h['chain_id'], f"Автоматически замкнута цепь #{h['chain_id']} (зазор {h['gap_to_close']:.2f} мм)")
+                collector.add_info('MANUALFIX', chain_id,
+                                   f"Замкнута цепь #{chain_id} (зазор {fix['gap']:.2f} мм)")
+            else:
+                collector.add_warning('MANUALFIX', chain_id,
+                                      "Не удалось замкнуть цепь (изменились условия)")
 
     # 2. Удаление дубликатов
-    original_count = len(objects_data)
-    objects_data = remove_duplicate_entities(objects_data)
-    if len(objects_data) < original_count:
-        removed = original_count - len(objects_data)
-        any_fix = True
-        st.success(f"🔧 Удалено {removed} дублирующихся объектов")
-        collector.add_info('AUTOFIX', 0, f"Удалено {removed} дублирующихся объектов")
+    if apply_dedup:
+        before = len(objects_data)
+        objects_data = remove_duplicate_entities(objects_data)
+        removed = before - len(objects_data)
+        if removed > 0:
+            collector.add_info('MANUALFIX', 0, f"Удалено {removed} дублирующихся объектов")
 
-    st.session_state['auto_fix_applied'] = any_fix
-    return objects_data
+    # Обновляем стейт
+    st.session_state['objects_data'] = objects_data
+    # Сбрасываем предложенные исправления
+    st.session_state['suggested_fixes'] = None
+    return objects_data, collector
 
 
-def _fixes_applied():
-    """Проверяет, были ли применены автоисправления."""
-    return st.session_state.get('auto_fix_applied', False)
+def _rerun_analysis(objects_data, collector, doc):
+    """Повторно запускает конвейер анализа с обновлёнными данными."""
+    # Очищаем старые результаты
+    for key in ['chain_polygons', 'contour_classification', 'fixed_polygons',
+                'validation_messages', 'quality_report']:
+        if key in st.session_state:
+            del st.session_state[key]
+
+    result = _run_analysis_pipeline(objects_data, collector, doc)
+    if result:
+        _display_results(*result)
+    else:
+        st.warning("Нет данных для отображения")
 
 
 def _calculate_statistics(objects_data):
@@ -290,10 +342,41 @@ def _display_results(objects_data, total_length, piercing_count,
                     else:
                         st.caption("⚠️ Требуется ручная проверка")
 
-            if summ['unassigned_count'] > 0:
-                st.subheader("❓ Объекты без цепи")
-                for obj_info in qr['unassigned_objects']:
-                    st.write(f"Объект #{obj_info['num']}: {obj_info['type']}, длина {obj_info['length']:.2f} мм")
+            if summ.get('excess_count', 0) > 0:
+                st.subheader("🗑️ Лишние объекты в замкнутых контурах")
+                for exc in qr['excess_objects_in_closed']:
+                    st.write(f"Объект #{exc['num']}: {exc['type']}, цепь {exc['chain_id']} — {exc['description']}")
+
+    # === БЛОК РУЧНОГО ПОДТВЕРЖДЕНИЯ ИСПРАВЛЕНИЙ ===
+    if 'suggested_fixes' in st.session_state and st.session_state['suggested_fixes']:
+        fixes = st.session_state['suggested_fixes']
+        st.markdown("---")
+        st.markdown("### 🛠️ Предлагаемые исправления")
+        st.warning("Автоматические исправления отключены. Выберите, какие применить.")
+
+        selected_hanging = []
+        apply_dedup = False
+
+        if fixes['hanging_fixes']:
+            st.write("**Замкнуть висячие цепи:**")
+            for fix in fixes['hanging_fixes']:
+                label = f"Цепь #{fix['chain_id']} (зазор {fix['gap']:.2f} мм, {fix['object_count']} объектов)"
+                if st.checkbox(label, value=True, key=f"fix_{fix['chain_id']}"):
+                    selected_hanging.append(fix)
+
+        if fixes['has_duplicates']:
+            dup_count = fixes.get('duplicates_count', '?')
+            if st.checkbox(f"Удалить дублирующиеся объекты ({dup_count} шт.)", value=True, key="fix_duplicates"):
+                apply_dedup = True
+
+        if st.button("✅ Применить выбранные исправления", type="primary"):
+            objects_data_new, collector_new = _apply_manual_fixes(selected_hanging, apply_dedup)
+            if objects_data_new is not None:
+                # Повторный анализ с обновлёнными данными
+                _rerun_analysis(objects_data_new, collector_new, doc)
+                st.experimental_rerun()  # чтобы сразу показать обновлённый UI
+            else:
+                st.error("Не удалось применить исправления.")
 
     st.markdown("---")
     col_left, col_right = st.columns([1, 1.5])
@@ -345,7 +428,6 @@ def _render_export_buttons(objects_data, stats):
 
 def _render_visualization(doc, objects_data, collector):
     st.markdown("### 🎨 Чертеж с цветовой индикацией")
-    # ✅ Пункт 2: добавлена опция "Контуры детали"
     display_mode = st.radio("Режим отображения:",
                             options=["Исходные цвета", "Индикация ошибок", "Визуализация цепей", "🧩 Контуры детали"],
                             horizontal=True)
@@ -357,7 +439,6 @@ def _render_visualization(doc, objects_data, collector):
     show_markers = st.checkbox("🔴 Показать маркеры", value=True)
     font_size_multiplier = st.slider("📏 Размер шрифта", 0.5, 3.0, 1.0, 0.1) if show_markers else 1.0
 
-    # Сбор данных контуров для режима контуров
     contour_data = None
     if show_contours:
         if 'chain_polygons' in st.session_state:
