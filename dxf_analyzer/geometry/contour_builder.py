@@ -143,6 +143,26 @@ def get_entity_geom_points(entity, num_segments=50) -> List[Tuple[float, float]]
         return []
 
 
+def deduplicate_chain_objects(chain_objects: List[DXFObject], tolerance: float = TOLERANCE) -> List[DXFObject]:
+    """
+    Удаляет дублирующиеся объекты внутри одной цепи на основе геометрии и длины.
+    """
+    unique = []
+    seen = set()
+    for obj in chain_objects:
+        pts = get_entity_geom_points(obj.entity, num_segments=20)  # быстрая аппроксимация
+        if not pts:
+            continue
+        # Округление координат для устойчивого сравнения
+        rounded_pts = tuple((round(x, 3), round(y, 3)) for x, y in pts)
+        length_rounded = round(obj.length, 3)
+        geom_key = (rounded_pts, length_rounded, obj.entity_type)
+        if geom_key not in seen:
+            seen.add(geom_key)
+            unique.append(obj)
+    return unique
+
+
 def build_chain_linestring(objects: List[DXFObject], tolerance: float = TOLERANCE) -> Optional[LineString]:
     """
     Собирает непрерывную линию из связанных объектов одной цепи.
@@ -240,6 +260,9 @@ def chain_to_polygon(chain_objects: List[DXFObject], tolerance: float = TOLERANC
     """
     Преобразует цепь объектов в полигон.
     """
+    # Пункт 5: удаляем дубликаты внутри цепочки перед сборкой
+    chain_objects = deduplicate_chain_objects(chain_objects, tolerance)
+    
     ls = build_chain_linestring(chain_objects, tolerance)
     if ls is None or ls.is_empty:
         return None
@@ -258,7 +281,7 @@ def chain_to_polygon(chain_objects: List[DXFObject], tolerance: float = TOLERANC
         poly = Polygon(ls)
         if not poly.is_valid:
             poly = poly.buffer(0)
-        # ✅ Пункт 1: принудительно ориентируем внешнее кольцо против часовой стрелки (CCW)
+        # Принудительно ориентируем внешнее кольцо против часовой стрелки (CCW)
         if poly.is_valid:
             poly = orient(poly, sign=1.0)
         return poly if poly.is_valid else None
