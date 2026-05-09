@@ -189,7 +189,6 @@ def _prepare_suggested_fixes(objects_data, quality_report):
                 'total_length': h['total_length']
             })
     # Проверка на дубликаты (предварительная, без фактического изменения)
-    # Просто проверяем, есть ли дубликаты по тому же критерию
     original_count = len(objects_data)
     dedup = remove_duplicate_entities(objects_data.copy())  # не меняем оригинал
     if len(dedup) < original_count:
@@ -214,11 +213,9 @@ def _apply_manual_fixes(selected_hanging, apply_dedup):
     if selected_hanging:
         for fix in selected_hanging:
             chain_id = fix['chain_id']
-            # Получаем объекты цепи
             chain_objs = [obj for obj in objects_data if obj.chain_id == chain_id]
             new_chain = auto_close_chain(chain_objs, fix['gap'])
             if new_chain is not None:
-                # Удаляем старые объекты этой цепи и добавляем новую цепь
                 objects_data = [obj for obj in objects_data if obj.chain_id != chain_id]
                 objects_data.extend(new_chain)
                 collector.add_info('MANUALFIX', chain_id,
@@ -442,13 +439,14 @@ def _render_visualization(doc, objects_data, collector):
     contour_data = None
     if show_contours:
         if 'chain_polygons' in st.session_state:
+            classification = st.session_state.get('contour_classification')
             contour_data = {
                 'chain_polygons': st.session_state.get('chain_polygons', {}),
                 'fixed_polygons': st.session_state.get('fixed_polygons', {}),
-                'classification': st.session_state.get('contour_classification', {}),
+                'classification': classification,
                 'validation_messages': st.session_state.get('validation_messages', {})
             }
-            if not contour_data['classification'].get('external_id'):
+            if classification is None or not classification.get('external_id'):
                 st.warning("⚠️ Контуры ещё не классифицированы. Сначала выполните анализ.")
         else:
             st.warning("⚠️ Контуры не построены. Загрузите DXF и дождитесь анализа.")
