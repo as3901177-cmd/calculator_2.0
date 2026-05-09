@@ -5,6 +5,7 @@
 import math
 from typing import List, Tuple, Optional, Dict, Any
 from shapely.geometry import LineString, Polygon, Point
+from shapely.geometry.polygon import orient
 from shapely.ops import linemerge
 from ..core.models import DXFObject
 from ..core.config import TOLERANCE
@@ -257,6 +258,9 @@ def chain_to_polygon(chain_objects: List[DXFObject], tolerance: float = TOLERANC
         poly = Polygon(ls)
         if not poly.is_valid:
             poly = poly.buffer(0)
+        # Принудительно ориентируем внешнее кольцо против часовой стрелки (CCW)
+        if poly.is_valid:
+            poly = orient(poly, sign=1.0)
         return poly if poly.is_valid else None
     except Exception:
         return None
