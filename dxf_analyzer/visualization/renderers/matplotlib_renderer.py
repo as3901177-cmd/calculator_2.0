@@ -34,6 +34,8 @@ class MatplotlibRenderer:
         use_original_colors: bool = True,
         show_chains: bool = False,
         show_error_labels: bool = False,
+        show_contours: bool = False,
+        contour_data: Optional[Dict[str, Any]] = None,
     ) -> Tuple[Optional[Figure], Optional[str]]:
         try:
             fig, ax = plt.subplots(figsize=self.figsize)
@@ -46,29 +48,48 @@ class MatplotlibRenderer:
             if show_chains:
                 chain_color_map = self._generate_chain_colors(objects_data)
 
+            # Если показываем контуры — исходные объекты рисуем приглушённо
+            if show_contours:
+                obj_color = '#B0B0B0'
+                obj_linewidth = 0.7
+                obj_alpha = 0.7
+                use_original_colors = False
+                show_chains = False
+            else:
+                obj_color = None
+                obj_linewidth = None
+                obj_alpha = None
+
             all_x, all_y = [], []
 
             for obj in objects_data:
-                color, linewidth, alpha = self._get_object_style(
-                    obj, use_original_colors, show_chains, chain_color_map
-                )
+                if show_contours:
+                    color, linewidth, alpha = obj_color, obj_linewidth, obj_alpha
+                else:
+                    color, linewidth, alpha = self._get_object_style(
+                        obj, use_original_colors, show_chains, chain_color_map
+                    )
                 self._draw_entity(ax, obj.entity, color, linewidth, alpha, all_x, all_y)
+
+            # ✅ Пункт 2: Отрисовка реконструированных контуров
+            if show_contours and contour_data:
+                self._draw_contours(ax, contour_data)
 
             if all_x and all_y:
                 margin = 50
                 ax.set_xlim(min(all_x) - margin, max(all_x) + margin)
                 ax.set_ylim(min(all_y) - margin, max(all_y) + margin)
 
-            if show_markers:
+            if show_markers and not show_contours:
                 self._draw_markers(
                     ax, objects_data, show_chains,
                     chain_color_map, font_size_multiplier
                 )
 
-            if show_error_labels:
+            if show_error_labels and not show_contours:
                 self._draw_error_annotations(ax, objects_data, font_size_multiplier)
 
-            title = self._get_title(show_chains, objects_data)
+            title = self._get_title(show_chains, objects_data, show_contours)
             ax.set_title(title, fontsize=14, weight='bold')
             plt.tight_layout()
             return fig, None
@@ -295,18 +316,15 @@ class MatplotlibRenderer:
                 ends = get_endpoints_force(obj.entity)
                 if ends:
                     (x1, y1), (x2, y2) = ends
-                    # Красные кружки на концах
                     ax.plot(x1, y1, marker='o', color='red', markersize=8,
                             markeredgecolor='darkred', markeredgewidth=1.5, zorder=300)
                     ax.plot(x2, y2, marker='o', color='red', markersize=8,
                             markeredgecolor='darkred', markeredgewidth=1.5, zorder=300)
-                    # Пунктирная линия зазора
                     ax.plot([x1, x2], [y1, y2], linestyle='--', color='red', linewidth=1.5, alpha=0.7, zorder=299)
 
             if not label:
                 continue
 
-            # Разнесение аннотаций
             offset_angle = (idx * 1.2) % (2 * math.pi)
             offset_dist = 20 + (idx % 5) * 12
             dx = offset_dist * math.cos(offset_angle)
@@ -325,12 +343,92 @@ class MatplotlibRenderer:
                 zorder=250
             )
 
-    def _get_title(self, show_chains, objects_data):
+    def _get_title(self, show_chains, objects_data, show_contours=False):
+        if show_contours:
+            return "Контуры детали (реконструированные полигоны)"
         if show_chains:
             num_chains = len(set(obj.chain_id for obj in objects_data))
             return f"Chain Visualization ({num_chains} chains)"
         else:
             return "DXF Drawing Visualization"
+
+    # ✅ Пункт 2: Новый метод визуализации контуров
+    def _draw_contours(self, ax, contour_data):
+        """
+        Рисует реконструированные полигоны контуров.
+        """
+        chain_polygons = contour_data.get('chain_polygons', {})
+        fixed_polygons = contour_data.get('fixed_polygons', {})
+        classification = contour_data.get('classification', {})
+        validation_messages = contour_data.get('validation_messages', {})
+
+        external_id = classification.get('external_id')
+        internal_ids = classification.get('internal_ids', [])
+
+        def get_display_poly(chain_id):
+            return fixed_polygons.get(chain_id) or chain_polygons.get(chain_id)
+
+        # Внешний контур
+        if external_id is not None:
+            poly = get_display_poly(external_id)
+            if poly:
+                self._draw_single_contour(ax, poly, external_id, 'external',
+                                          validation_messages.get(external_id, []))
+
+        # Внутренние контуры
+        for int_id in internal_ids:
+            poly = get_display_poly(int_id)
+            if poly:
+                self._draw_single_contour(ax, poly, int_id, 'internal',
+                                          validation_messages.get(int_id, []))
+
+        # Легенда
+        legend_elements = [
+            patches.Patch(facecolor='#A6C8FF', edgecolor='#003366', linewidth=2, label='Внешний контур'),
+            patches.Patch(facecolor='#FFB3B3', edgecolor='#990000', linewidth=2, label='Внутренний контур'),
+            patches.Patch(facecolor='none', edgecolor='#FF6600', linestyle='--', linewidth=2, label='Исправлен'),
+        ]
+        ax.legend(handles=legend_elements, loc='upper right', fontsize=10)
+
+    def _draw_single_contour(self, ax, poly, chain_id, contour_type, messages):
+        """Отрисовка одного контура с учётом статуса."""
+        is_valid = True
+        was_fixed = False
+        for msg in messages:
+            if 'невалидный' in msg.lower() or 'исправить не удалось' in msg.lower():
+                is_valid = False
+            if 'исправлено' in msg.lower() or 'ориентация исправлена' in msg.lower():
+                was_fixed = True
+
+        if contour_type == 'external':
+            face_color = '#A6C8FF'
+            edge_color = '#003366'
+        else:
+            face_color = '#FFB3B3'
+            edge_color = '#990000'
+
+        if not is_valid:
+            edge_color = '#FF6600'
+            linestyle = (0, (5, 5))
+            linewidth = 2
+        elif was_fixed:
+            linestyle = '--'
+            linewidth = 2
+        else:
+            linestyle = '-'
+            linewidth = 3
+
+        if poly.exterior:
+            x, y = poly.exterior.xy
+            ax.fill(x, y, facecolor=face_color, alpha=0.3, zorder=5)
+            ax.plot(x, y, color=edge_color, linewidth=linewidth,
+                    linestyle=linestyle, alpha=0.9, zorder=6)
+
+        centroid = poly.centroid
+        ax.text(centroid.x, centroid.y, f'{chain_id}', fontsize=9,
+                ha='center', va='center', fontweight='bold',
+                bbox=dict(boxstyle='circle,pad=0.2', facecolor='white', alpha=0.8),
+                zorder=10)
 
 
 def visualize_dxf_with_status_indicators(
@@ -342,9 +440,12 @@ def visualize_dxf_with_status_indicators(
     use_original_colors: bool = True,
     show_chains: bool = False,
     show_error_labels: bool = False,
+    show_contours: bool = False,
+    contour_data: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Optional[Figure], Optional[str]]:
     renderer = MatplotlibRenderer()
     return renderer.render(
         doc, objects_data, collector, show_markers,
-        font_size_multiplier, use_original_colors, show_chains, show_error_labels
+        font_size_multiplier, use_original_colors, show_chains,
+        show_error_labels, show_contours, contour_data
     )
