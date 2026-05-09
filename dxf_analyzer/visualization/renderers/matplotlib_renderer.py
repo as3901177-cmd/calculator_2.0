@@ -6,7 +6,7 @@ import math
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import numpy as np
-from typing import List, Tuple, Optional, Any
+from typing import List, Tuple, Optional, Any, Dict
 from matplotlib.figure import Figure
 
 from ...core.models import DXFObject, ObjectStatus
@@ -71,7 +71,7 @@ class MatplotlibRenderer:
                     )
                 self._draw_entity(ax, obj.entity, color, linewidth, alpha, all_x, all_y)
 
-            # ✅ Пункт 2: Отрисовка реконструированных контуров
+            # Отрисовка реконструированных контуров
             if show_contours and contour_data:
                 self._draw_contours(ax, contour_data)
 
@@ -103,6 +103,8 @@ class MatplotlibRenderer:
     def _generate_chain_colors(self, objects_data: List[DXFObject]) -> dict:
         unique_chains = list(set(obj.chain_id for obj in objects_data))
         num_chains = len(unique_chains)
+        if num_chains == 0:
+            return {}
         colors_array = plt.cm.rainbow(np.linspace(0, 1, num_chains))
         return {chain_id: colors_array[i] for i, chain_id in enumerate(sorted(unique_chains))}
 
@@ -352,15 +354,23 @@ class MatplotlibRenderer:
         else:
             return "DXF Drawing Visualization"
 
-    # ✅ Пункт 2: Новый метод визуализации контуров
+    # Новый метод визуализации контуров
     def _draw_contours(self, ax, contour_data):
         """
         Рисует реконструированные полигоны контуров.
+        contour_data содержит:
+            - chain_polygons: {chain_id: Polygon}
+            - fixed_polygons: {chain_id: Polygon}
+            - classification: {'external_id': int, 'internal_ids': [int]} или None
+            - validation_messages: {chain_id: [str]}
         """
         chain_polygons = contour_data.get('chain_polygons', {})
         fixed_polygons = contour_data.get('fixed_polygons', {})
-        classification = contour_data.get('classification', {})
+        classification = contour_data.get('classification')
         validation_messages = contour_data.get('validation_messages', {})
+
+        if classification is None:
+            return  # Нечего рисовать
 
         external_id = classification.get('external_id')
         internal_ids = classification.get('internal_ids', [])
