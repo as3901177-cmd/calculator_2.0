@@ -8,6 +8,7 @@ from typing import Dict, Any
 
 from ...core.config import install_dependencies, MAX_FILE_SIZE_MB
 from ...core.errors import ErrorCollector
+from ...core.models import ObjectStatus
 from ...parsers.dxf_reader import read_dxf_file
 from ...parsers.entity_extractor import extract_entities
 from ...parsers.layer_analyzer import analyze_colors
@@ -16,6 +17,7 @@ from ...geometry.contour_builder import chain_to_polygon
 from ...geometry.contour_classifier import classify_contours
 from ...geometry.contour_validator import validate_all_contours
 from ...geometry.contour_quality_checker import generate_quality_report
+from ...geometry.contour_fixer import auto_close_chain, remove_duplicate_entities
 from ...visualization.renderers.matplotlib_renderer import visualize_dxf_with_status_indicators
 from ...export.csv_exporter import export_to_csv, export_statistics_to_csv
 from ..components.error_reporter import show_error_report
@@ -73,90 +75,140 @@ def _process_file(uploaded_file):
         try:
             doc, temp_path = read_dxf_file(uploaded_file, collector)
             objects_data = extract_entities(doc, collector)
-            stats, color_stats, total_length = _calculate_statistics(objects_data)
-            piercing_count, piercing_details = count_piercings_advanced(objects_data, collector)
-            show_error_report(collector)
-
-            if not objects_data:
-                st.warning("⚠️ В чертеже не найдено объектов для расчета")
+            # Запускаем конвейер анализа и автоисправлений
+            objects_data = _run_analysis_pipeline(objects_data, collector, doc)
+            if objects_data:
+                _display_results(*objects_data)
             else:
-                # === Построение замкнутых контуров из цепей ===
-                chain_polygons = {}
-                for chain in piercing_details['chains']:
-                    if chain['type'] == 'closed':
-                        chain_objs = [obj for obj in objects_data if obj.chain_id == chain['chain_id']]
-                        if chain_objs:
-                            poly = chain_to_polygon(chain_objs)
-                            if poly:
-                                chain_polygons[chain['chain_id']] = poly
-                st.session_state['chain_polygons'] = chain_polygons
-
-                if chain_polygons:
-                    st.success(f"✅ Построено {len(chain_polygons)} замкнутых контуров (полигонов)")
-                else:
-                    st.info("ℹ️ Замкнутые полигональные контуры не обнаружены")
-
-                # === Классификация контуров (внешний / внутренние) ===
-                if chain_polygons:
-                    external_id, internal_ids, contour_warnings = classify_contours(chain_polygons)
-                    st.session_state['contour_classification'] = {
-                        'external_id': external_id,
-                        'internal_ids': internal_ids,
-                        'warnings': contour_warnings
-                    }
-                    if external_id is not None:
-                        st.success(f"🎯 Внешний контур: цепь #{external_id}, "
-                                   f"внутренних отверстий: {len(internal_ids)}")
-                    else:
-                        st.warning("⚠️ Не удалось определить внешний контур")
-                    # Выводим предупреждения классификации
-                    for cid, warns in contour_warnings.items():
-                        for w in warns:
-                            st.warning(f"🔸 Контур #{cid}: {w}")
-
-                    # === Валидация и автоисправление контуров ===
-                    fixed_polygons, validation_messages = validate_all_contours(
-                        external_id, internal_ids, chain_polygons
-                    )
-                    st.session_state['fixed_polygons'] = fixed_polygons
-                    st.session_state['validation_messages'] = validation_messages
-
-                    if fixed_polygons:
-                        st.success(f"✅ После валидации: {len(fixed_polygons)} корректных контуров")
-                    for cid, msgs in validation_messages.items():
-                        for msg in msgs:
-                            if msg.startswith("❌"):
-                                st.error(f"🔴 {msg}")
-                            elif msg.startswith("⚠"):
-                                st.warning(f"🟡 {msg}")
-                            else:
-                                st.info(f"ℹ️ {msg}")
-
-                    # === Проверка качества контуров (висячие линии и т.д.) ===
-                    quality_report = generate_quality_report(
-                        chain_polygons,
-                        fixed_polygons,
-                        piercing_details,
-                        objects_data,
-                        external_id,
-                        internal_ids
-                    )
-                    st.session_state['quality_report'] = quality_report
-
-                else:
-                    st.session_state['contour_classification'] = None
-                    st.session_state['fixed_polygons'] = None
-                    st.session_state['validation_messages'] = None
-                    st.session_state['quality_report'] = None
-
-                _display_results(objects_data, total_length, piercing_count,
-                                 piercing_details, stats, color_stats, doc, collector)
+                st.warning("Нет данных для отображения")
         except Exception as e:
             collector.add_error('SYSTEM', 0, f"Критическая ошибка: {e}", type(e).__name__)
             show_error_report(collector)
             import traceback
             with st.expander("🔍 Трассировка ошибки"):
                 st.code(traceback.format_exc())
+
+
+def _run_analysis_pipeline(objects_data, collector, doc):
+    """Запускает полный цикл: статистика, врезки, контуры, классификация, валидация, исправления."""
+    stats, color_stats, total_length = _calculate_statistics(objects_data)
+    piercing_count, piercing_details = count_piercings_advanced(objects_data, collector)
+    show_error_report(collector)
+
+    if not objects_data:
+        st.warning("⚠️ В чертеже не найдено объектов для расчета")
+        return None
+
+    # Построение замкнутых контуров
+    chain_polygons = {}
+    for chain in piercing_details['chains']:
+        if chain['type'] == 'closed':
+            chain_objs = [obj for obj in objects_data if obj.chain_id == chain['chain_id']]
+            if chain_objs:
+                poly = chain_to_polygon(chain_objs)
+                if poly:
+                    chain_polygons[chain['chain_id']] = poly
+    st.session_state['chain_polygons'] = chain_polygons
+    if chain_polygons:
+        st.success(f"✅ Построено {len(chain_polygons)} замкнутых контуров (полигонов)")
+    else:
+        st.info("ℹ️ Замкнутые полигональные контуры не обнаружены")
+
+    # Классификация
+    if chain_polygons:
+        external_id, internal_ids, contour_warnings = classify_contours(chain_polygons)
+        st.session_state['contour_classification'] = {
+            'external_id': external_id,
+            'internal_ids': internal_ids,
+            'warnings': contour_warnings
+        }
+        if external_id is not None:
+            st.success(f"🎯 Внешний контур: цепь #{external_id}, "
+                       f"внутренних отверстий: {len(internal_ids)}")
+        else:
+            st.warning("⚠️ Не удалось определить внешний контур")
+        for cid, warns in contour_warnings.items():
+            for w in warns:
+                st.warning(f"🔸 Контур #{cid}: {w}")
+
+        # Валидация
+        fixed_polygons, validation_messages = validate_all_contours(
+            external_id, internal_ids, chain_polygons
+        )
+        st.session_state['fixed_polygons'] = fixed_polygons
+        st.session_state['validation_messages'] = validation_messages
+        if fixed_polygons:
+            st.success(f"✅ После валидации: {len(fixed_polygons)} корректных контуров")
+        for cid, msgs in validation_messages.items():
+            for msg in msgs:
+                if msg.startswith("❌"):
+                    st.error(f"🔴 {msg}")
+                elif msg.startswith("⚠"):
+                    st.warning(f"🟡 {msg}")
+                else:
+                    st.info(f"ℹ️ {msg}")
+
+        # Проверка качества
+        quality_report = generate_quality_report(
+            chain_polygons, fixed_polygons, piercing_details,
+            objects_data, external_id, internal_ids
+        )
+        st.session_state['quality_report'] = quality_report
+
+        # === БЛОК АВТОИСПРАВЛЕНИЙ ===
+        objects_data = _apply_auto_fixes(objects_data, piercing_details, quality_report, collector)
+
+        if _fixes_applied():
+            # Если были внесены изменения, повторяем анализ полностью
+            st.info("🔄 Внесены автоисправления, пересчитываем...")
+            return _run_analysis_pipeline(objects_data, collector, doc)
+    else:
+        st.session_state['contour_classification'] = None
+        st.session_state['fixed_polygons'] = None
+        st.session_state['validation_messages'] = None
+        st.session_state['quality_report'] = None
+
+    return (objects_data, total_length, piercing_count, piercing_details,
+            stats, color_stats, doc, collector)
+
+
+def _apply_auto_fixes(objects_data, piercing_details, quality_report, collector):
+    """Выполняет автоисправления: замыкание висячих цепей, удаление дубликатов."""
+    any_fix = False
+    # 1. Замыкание висячих цепей, где зазор < допуск
+    for h in quality_report['hanging_objects']:
+        if h['can_autoclose']:
+            # Получаем объекты этой цепи
+            chain_objs = [obj for obj in objects_data if obj.chain_id == h['chain_id']]
+            # Вызываем auto_close_chain
+            new_chain = auto_close_chain(chain_objs, h['gap_to_close'])
+            if new_chain is not None:
+                # Заменяем объекты в общем списке
+                # Удалим старые и добавим новые ( но проще пересоздать список)
+                # Так как объекты уже в objects_data, удалим старые и добавим новые
+                objects_data = [obj for obj in objects_data if obj.chain_id != h['chain_id']]
+                objects_data.extend(new_chain)
+                any_fix = True
+                st.success(f"🔧 Замкнута цепь #{h['chain_id']} (добавлен сегмент)")
+                collector.add_info('AUTOFIX', h['chain_id'], f"Автоматически замкнута цепь #{h['chain_id']} (зазор {h['gap_to_close']:.2f} мм)")
+
+    # 2. Удаление дубликатов
+    original_count = len(objects_data)
+    objects_data = remove_duplicate_entities(objects_data)
+    if len(objects_data) < original_count:
+        removed = original_count - len(objects_data)
+        any_fix = True
+        st.success(f"🔧 Удалено {removed} дублирующихся объектов")
+        collector.add_info('AUTOFIX', 0, f"Удалено {removed} дублирующихся объектов")
+
+    # Сохраняем флаг в session_state, чтобы потом повторно запустить pipeline
+    st.session_state['auto_fix_applied'] = any_fix
+    return objects_data
+
+
+def _fixes_applied():
+    """Проверяет, были ли применены автоисправления."""
+    return st.session_state.get('auto_fix_applied', False)
 
 
 def _calculate_statistics(objects_data):
@@ -206,7 +258,6 @@ def _display_results(objects_data, total_length, piercing_count,
                     st.markdown("*Внутренние отверстия не найдены*")
             else:
                 st.warning("Классификация не выполнена")
-            # Предупреждения классификации
             for cid, warns in classif['warnings'].items():
                 for w in warns:
                     st.warning(f"🔸 Контур #{cid}: {w}")
