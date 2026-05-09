@@ -5,12 +5,10 @@
 
 import streamlit as st
 import json
-import base64
-import subprocess  # <-- исправлено: добавлен глобальный импорт
+import subprocess
 from pathlib import Path
 import sys
 
-# Добавим путь к корню проекта, если нужно
 project_root = Path(__file__).parent.parent.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
@@ -22,7 +20,6 @@ def show_testing_page():
     st.title("🧪 Тестирование DXF Analyzer")
     st.markdown("---")
 
-    # Три вкладки
     tab_accuracy, tab_files, tab_generate = st.tabs([
         "🧪 Проверка точности",
         "📥 Скачать тестовые файлы",
@@ -43,7 +40,6 @@ def show_testing_page():
 def render_accuracy_tab():
     st.markdown("### 🔍 Проверка точности расчёта длины реза")
 
-    # Загружаем эталонные данные
     fixtures_dir = project_root / "tests" / "fixtures"
     expected_file = fixtures_dir / "expected_results.json"
 
@@ -63,11 +59,9 @@ def render_accuracy_tab():
         st.warning("⚠️ Эталонные данные пусты.")
         return
 
-    # Кнопка запуска проверки
     if st.button("🚀 Запустить проверку", type="primary", use_container_width=True):
         run_accuracy_check(test_cases)
 
-    # Если результаты уже есть – покажем таблицу
     if "accuracy_results" in st.session_state and st.session_state.accuracy_results:
         results = st.session_state.accuracy_results
         show_accuracy_table(results, fixtures_dir)
@@ -76,7 +70,7 @@ def render_accuracy_tab():
     st.markdown("### 📦 Дополнительно: модульные тесты (pytest)")
     col_a, col_b = st.columns(2)
     with col_a:
-        if st.button("🔧 Запустить модульные тесты", help="Запустить все тесты pytest из папки tests/"):
+        if st.button("🔧 Запустить модульные тесты"):
             run_pytest_and_show_results()
     with col_b:
         if st.button("📊 Показать последние результаты pytest"):
@@ -87,7 +81,6 @@ def render_accuracy_tab():
 
 
 def run_accuracy_check(test_cases):
-    """Выполняет расчёт длины для каждого тестового файла и сохраняет результаты."""
     fixtures_dir = project_root / "tests" / "fixtures"
     results = []
     for case in test_cases:
@@ -123,21 +116,8 @@ def run_accuracy_check(test_cases):
     st.rerun()
 
 
-def get_file_download_link(file_path: Path, link_text: str) -> str:
-    """Создаёт HTML-ссылку для скачивания файла (data URI)."""
-    if not file_path.exists():
-        return link_text
-    try:
-        with open(file_path, "rb") as f:
-            file_data = f.read()
-        b64 = base64.b64encode(file_data).decode()
-        return f'<a href="data:application/octet-stream;base64,{b64}" download="{file_path.name}">{link_text}</a>'
-    except Exception:
-        return link_text
-
-
 def show_accuracy_table(results, fixtures_dir):
-    """Отображает результаты в виде HTML-таблиц по категориям."""
+    import pandas as pd
     category_order = ["basic", "medium", "complex"]
     category_names = {
         "basic": "Базовые фигуры",
@@ -149,65 +129,43 @@ def show_accuracy_table(results, fixtures_dir):
         cat = r["category"]
         grouped.setdefault(cat, []).append(r)
 
-    status_styles = {
-        "Пройден": 'color: #155724; background-color: #d4edda; font-weight: bold; padding: 2px 6px; border-radius: 4px;',
-        "Провален": 'color: #721c24; background-color: #f8d7da; font-weight: bold; padding: 2px 6px; border-radius: 4px;',
-    }
-
     for cat in category_order:
         if cat not in grouped:
             continue
         cat_label = category_names.get(cat, cat)
         st.subheader(f"📂 {cat_label}")
 
-        html = """
-        <style>
-        .test-table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; }
-        .test-table th, .test-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #ddd; }
-        .test-table th { background-color: #667eea; color: white; }
-        .test-table tr:hover { background-color: #f5f5f5; }
-        </style>
-        <table class="test-table">
-        <thead><tr>
-            <th>Название</th>
-            <th>Файл</th>
-            <th>Эталон (мм)</th>
-            <th>Рассчитано (мм)</th>
-            <th>Отклонение (мм)</th>
-            <th>Допуск (мм)</th>
-            <th>Статус</th>
-        </tr></thead>
-        <tbody>
-        """
+        rows = []
         for r in grouped[cat]:
-            file_path = fixtures_dir / r["file"]
-            file_link = get_file_download_link(file_path, r["file"])
             actual_str = f"{r['actual']:.3f}" if r['actual'] is not None else "—"
             deviation_str = f"{r['deviation']:.4f}" if r['deviation'] is not None else "—"
-            status_raw = r['status']
-            if status_raw in status_styles:
-                status_html = f'<span style="{status_styles[status_raw]}">{status_raw}</span>'
-            else:
-                status_html = status_raw
+            rows.append({
+                "Название": r["name"],
+                "Файл": r["file"],
+                "Эталон (мм)": f"{r['expected']:.3f}",
+                "Рассчитано (мм)": actual_str,
+                "Отклонение (мм)": deviation_str,
+                "Допуск (мм)": f"{r['tolerance']:.3f}",
+                "Статус": r["status"]
+            })
+        df = pd.DataFrame(rows)
+        st.dataframe(df, use_container_width=True, hide_index=True)
 
-            html += f"""
-            <tr>
-                <td>{r['name']}</td>
-                <td>{file_link}</td>
-                <td>{r['expected']:.3f}</td>
-                <td>{actual_str}</td>
-                <td>{deviation_str}</td>
-                <td>{r['tolerance']:.3f}</td>
-                <td>{status_html}</td>
-            </tr>
-            """
-        html += "</tbody></table>"
-
-        st.markdown(html, unsafe_allow_html=True)
+        st.markdown("**Скачать файлы:**")
+        cols = st.columns(min(len(grouped[cat]), 4))
+        for i, r in enumerate(grouped[cat]):
+            file_path = fixtures_dir / r["file"]
+            if file_path.exists():
+                with open(file_path, "rb") as f:
+                    cols[i % len(cols)].download_button(
+                        label=f"📥 {r['file']}",
+                        data=f.read(),
+                        file_name=r['file'],
+                        key=f"dl_{r['file']}"
+                    )
 
 
 def run_pytest_and_show_results():
-    """Запуск pytest и сохранение результатов в session_state."""
     cmd = [sys.executable, "-m", "pytest", "tests/", "-v", "--tb=short", "--color=no"]
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=120,
@@ -215,13 +173,11 @@ def run_pytest_and_show_results():
         output = result.stdout + "\n" + result.stderr
     except Exception as e:
         output = f"Ошибка запуска: {e}"
-
     st.session_state.pytest_results = output
     st.rerun()
 
 
 def show_pytest_results(output: str):
-    """Отображает вывод pytest."""
     st.markdown("### 📊 Результаты pytest")
     st.code(output, language="text")
 
