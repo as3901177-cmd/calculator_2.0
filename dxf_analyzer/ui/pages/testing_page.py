@@ -6,6 +6,7 @@
 import streamlit as st
 import json
 import base64
+import subprocess  # <-- исправлено: добавлен глобальный импорт
 from pathlib import Path
 import sys
 
@@ -48,7 +49,6 @@ def render_accuracy_tab():
 
     if not expected_file.exists():
         st.error("❌ Файл с эталонными данными не найден. Сгенерируйте тестовые данные на вкладке «Генерация файлов».")
-        # Показываем кнопку быстрого перехода? Нет, просто сообщение.
         return
 
     try:
@@ -208,7 +208,6 @@ def show_accuracy_table(results, fixtures_dir):
 
 def run_pytest_and_show_results():
     """Запуск pytest и сохранение результатов в session_state."""
-    import subprocess
     cmd = [sys.executable, "-m", "pytest", "tests/", "-v", "--tb=short", "--color=no"]
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=120,
