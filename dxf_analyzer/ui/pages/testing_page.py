@@ -1,5 +1,6 @@
 """
-Страница тестирования с наглядной таблицей результатов и детальными ошибками
+Страница тестирования с интеллектуальным выбором тестов,
+наглядной таблицей результатов и скачиванием тестовых файлов.
 """
 
 import streamlit as st
@@ -33,24 +34,28 @@ def show_testing_page():
 # ======================== ЗАПУСК ТЕСТОВ ========================
 def render_test_runner():
     st.markdown("### 🧪 Запуск автоматических тестов")
-    st.info("""
-    **Доступные тесты:**
-    - ✅ Тесты калькуляторов (unit tests)
-    - ✅ Тесты расчёта длины реза (эталонные фигуры)
-    - ✅ Тесты обработки контуров
-    - ✅ Интеграционные тесты
-    """)
+    st.info("Тесты проверяют корректность расчётов длины реза, обработки контуров, калькуляторов и т.д.")
 
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        if st.button("🧪 Все тесты", use_container_width=True):
-            run_tests_and_store("all")
-    with col2:
-        if st.button("📏 Тесты длины реза", use_container_width=True):
-            run_tests_and_store("cut_length")
-    with col3:
-        if st.button("🔧 Тесты калькуляторов", use_container_width=True):
-            run_tests_and_store("calculators")
+    # Автоматический поиск тестовых файлов
+    tests_dir = Path("tests")
+    test_files = sorted(tests_dir.glob("test_*.py")) if tests_dir.exists() else []
+
+    if not test_files:
+        st.warning("Тестовые файлы не найдены в папке tests/")
+        return
+
+    # Отображаем кнопки для каждого файла и одну общую
+    st.markdown("#### 📋 Доступные тесты")
+    cols = st.columns(min(len(test_files) + 1, 4))  # максимум 4 кнопки в ряду
+    for i, test_file in enumerate(test_files):
+        # Красивое имя: test_calculators -> Калькуляторы и т.п.
+        name = test_file.stem.replace("test_", "").replace("_", " ").title()
+        if cols[i % len(cols)].button(f"📄 {name}", key=f"run_{test_file.stem}"):
+            run_tests_and_store(str(test_file))
+
+    # Кнопка "Все тесты"
+    if st.button("🚀 Все тесты", type="primary", use_container_width=True):
+        run_tests_and_store("tests/")
 
     # Отображение сохранённых результатов
     if 'test_results' in st.session_state and st.session_state.test_results:
@@ -73,11 +78,10 @@ def render_test_runner():
         if total > 0:
             st.progress(passed / total)
 
-        # Таблица
+        # Таблица результатов
         if tests:
             import pandas as pd
             df = pd.DataFrame(tests)
-            # Цветовое форматирование статуса
             def color_status(val):
                 if val == "PASSED":
                     return 'background-color: #d4edda; color: #155724; font-weight: bold'
@@ -98,7 +102,6 @@ def render_test_runner():
             st.markdown("---")
             st.markdown("### 🔍 Расшифровка ошибок")
             for test_name, trace in fail_details.items():
-                # Показываем только для FAILED/ERROR тестов
                 if any(t['name'] == test_name and t['status'] in ('FAILED', 'ERROR') for t in tests):
                     with st.expander(f"❌ {test_name}"):
                         st.text(trace)
@@ -114,16 +117,9 @@ def render_test_runner():
             )
 
 
-def run_tests_and_store(test_type: str):
+def run_tests_and_store(test_paths: str):
     """Запускает pytest, парсит результат, сохраняет в st.session_state"""
-    st.info(f"🔄 Запуск тестов: **{test_type}**...")
-    test_paths = {
-        "all": "tests/",
-        "cut_length": "tests/test_cut_length.py",
-        "calculators": "tests/test_calculators.py tests/test_contour_processing.py",
-    }.get(test_type, "tests/")
-
-    # Запускаем pytest с подробным выводом (traceback для ошибок)
+    st.info(f"🔄 Запуск тестов: **{test_paths}**...")
     cmd = [
         sys.executable, "-m", "pytest",
         test_paths,
@@ -159,7 +155,6 @@ def parse_pytest_output(output: str):
     fail_details = {}
 
     # 1. Собираем строки с результатами тестов (PASSED/FAILED/ERROR)
-    # Пример: "tests/test_calculators.py::test_circle_length PASSED [ 12%]"
     pattern = r"^(.*?)\s+(PASSED|FAILED|ERROR)"
     for line in output.splitlines():
         stripped = line.strip()
@@ -179,30 +174,19 @@ def parse_pytest_output(output: str):
     stats = {"total": total, "passed": passed, "failed": failed, "errors": errors}
 
     # 2. Извлекаем детальные traceback для упавших тестов
-    # Секции в выводе начинаются с "____ TestName ____" или "____ ERROR at setup ..."
-    # Ищем блоки, разделённые символами '_' или '='
-    # Простой подход: разделяем по маркеру "_____________ "
-    sections = re.split(r"_{10,}\s", output)
-    # Ищем секции, которые содержат название теста и traceback
-    # Более точно: ищем "FAILURES" или "ERRORS" заголовок
-    if "= FAILURES =" in output or "= ERRORS =" in output:
-        # Извлекаем часть после summary
-        failure_start = max(output.find("= FAILURES ="), output.find("= ERRORS ="), output.find("= short test summary info ="))
-        if failure_start != -1:
-            failures_section = output[failure_start:]
-            # Делим на блоки по разделителю "___________ "
-            blocks = re.split(r"_{10,}\s", failures_section)
-            current_test = None
-            for block in blocks:
-                # Ищем имя теста в начале блока
-                # Формат: "test_name _ " или "ERROR at setup of test_name _ "
-                name_match = re.search(r"(?:ERROR at setup of )?(\S+)\s_", block)
-                if name_match:
-                    current_test = name_match.group(1).strip()
-                    fail_details[current_test] = block.strip()
-                elif current_test:
-                    # продолжение предыдущего блока (редко)
-                    fail_details[current_test] += "\n" + block.strip()
+    # Ищем секции "FAILURES" или "ERRORS"
+    failure_start = max(output.find("= FAILURES ="), output.find("= ERRORS ="), output.find("= short test summary info ="))
+    if failure_start != -1:
+        failures_section = output[failure_start:]
+        blocks = re.split(r"_{10,}\s", failures_section)
+        current_test = None
+        for block in blocks:
+            name_match = re.search(r"(?:ERROR at setup of )?(\S+)\s_", block)
+            if name_match:
+                current_test = name_match.group(1).strip()
+                fail_details[current_test] = block.strip()
+            elif current_test:
+                fail_details[current_test] += "\n" + block.strip()
 
     return tests, stats, fail_details
 
@@ -280,7 +264,18 @@ def render_file_generator():
             st.success("✅ Эталонные данные созданы") if json_file.exists() else st.warning("⚠️ Эталонные данные не найдены")
 
         if dxf_files:
-            file_descriptions = { ... }  # тот же словарь
+            file_descriptions = {
+                "01_circle_d200.dxf": "Круг Ø200мм (628.32 мм)",
+                "02_rectangle_300x200.dxf": "Прямоугольник 300×200мм (1000.00 мм)",
+                "03_square_250.dxf": "Квадрат 250×250мм (1000.00 мм)",
+                "04_triangle_s150.dxf": "Треугольник со стороной 150мм (450.00 мм)",
+                "05_hexagon_s100.dxf": "Шестигранник под ключ 100мм (346.41 мм)",
+                "06_flange_d300_4holes.dxf": "Фланец Ø300 с отверстиями (1319.47 мм)",
+                "07_bracket_200x150.dxf": "L-образный кронштейн (800.53 мм)",
+                "08_ring_d200_d100.dxf": "Кольцо Ø200/Ø100 (942.48 мм)",
+                "09_slot_200x50.dxf": "Продолговатое отверстие (457.08 мм)",
+                "10_complex_part.dxf": "Сложная деталь (1351.33 мм)",
+            }
             for dxf_file in dxf_files:
                 file_name = dxf_file.name
                 desc = file_descriptions.get(file_name, "")
@@ -292,5 +287,64 @@ def render_file_generator():
                         st.download_button("📥 Скачать", data=f.read(), file_name=file_name, key=f"gen_{file_name}", use_container_width=True)
 
 
-# Вспомогательные функции (generate_test_fixtures, create_expected_results, create_and_download_zip) остаются без изменений.
-# Скопируйте их из предыдущего файла, они идентичны.
+def generate_test_fixtures():
+    with st.spinner("🔧 Генерация тестовых файлов..."):
+        try:
+            result = subprocess.run(
+                [sys.executable, "tests/generate_test_fixtures.py"],
+                capture_output=True, text=True, timeout=30
+            )
+            if result.returncode == 0:
+                st.success("✅ Тестовые DXF файлы успешно созданы!")
+                st.code(result.stdout, language='text')
+                st.rerun()
+            else:
+                st.error("❌ Ошибка при генерации файлов")
+                st.code(result.stderr, language='text')
+        except Exception as e:
+            st.error(f"❌ Ошибка: {e}")
+
+
+def create_expected_results():
+    with st.spinner("📊 Создание эталонных данных..."):
+        try:
+            result = subprocess.run(
+                [sys.executable, "tests/create_expected_results.py"],
+                capture_output=True, text=True, timeout=10
+            )
+            if result.returncode == 0:
+                st.success("✅ Эталонные данные успешно созданы!")
+                st.code(result.stdout, language='text')
+                st.rerun()
+            else:
+                st.error("❌ Ошибка при создании эталонных данных")
+                st.code(result.stderr, language='text')
+        except Exception as e:
+            st.error(f"❌ Ошибка: {e}")
+
+
+def create_and_download_zip(dxf_files: list):
+    import zipfile
+    from io import BytesIO
+
+    with st.spinner("📦 Создание ZIP архива..."):
+        try:
+            zip_buffer = BytesIO()
+            with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                for dxf_file in dxf_files:
+                    zip_file.write(dxf_file, dxf_file.name)
+            zip_buffer.seek(0)
+            st.download_button(
+                label="📥 Скачать test_fixtures.zip",
+                data=zip_buffer,
+                file_name="test_fixtures.zip",
+                mime="application/zip",
+                use_container_width=True
+            )
+            st.success(f"✅ ZIP архив создан ({len(dxf_files)} файлов)")
+        except Exception as e:
+            st.error(f"❌ Ошибка создания архива: {e}")
+
+
+if __name__ == "__main__":
+    show_testing_page()
