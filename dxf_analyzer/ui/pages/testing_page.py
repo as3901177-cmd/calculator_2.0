@@ -153,7 +153,7 @@ def show_accuracy_table(results, fixtures_dir):
 
         st.markdown("**Скачать файлы:**")
         cols = st.columns(min(len(grouped[cat]), 4))
-        for i, r in enumerate(grouped[cat]):                          # <-- ИЗМЕНЕНО: добавлен индекс i
+        for i, r in enumerate(grouped[cat]):                          # ← индекс для уникальности ключа
             file_path = fixtures_dir / r["file"]
             if file_path.exists():
                 with open(file_path, "rb") as f:
@@ -161,7 +161,7 @@ def show_accuracy_table(results, fixtures_dir):
                         label=f"📥 {r['file']}",
                         data=f.read(),
                         file_name=r['file'],
-                        key=f"accuracy_dl_{i}_{r['file']}"            # <-- ИЗМЕНЕНО: уникальный ключ
+                        key=f"accuracy_dl_{i}_{r['file']}"            # ← уникальный ключ
                     )
 
 
@@ -212,7 +212,7 @@ def render_file_downloader():
         "10_complex_part.dxf": "Сложная деталь (1351.33 мм)",
     }
 
-    for i, dxf_file in enumerate(dxf_files):                         # <-- ИЗМЕНЕНО: добавлен индекс i
+    for i, dxf_file in enumerate(dxf_files):                         # ← индекс для уникальности ключа
         file_name = dxf_file.name
         description = file_descriptions.get(file_name, "Без описания")
         col1, col2 = st.columns([3, 1])
@@ -222,7 +222,7 @@ def render_file_downloader():
         with col2:
             with open(dxf_file, 'rb') as f:
                 st.download_button("📥 Скачать", data=f.read(), file_name=file_name,
-                                   key=f"dl_file_{i}_{file_name}",      # <-- ИЗМЕНЕНО: уникальный ключ
+                                   key=f"dl_file_{i}_{file_name}",      # ← уникальный ключ
                                    use_container_width=True)
 
     st.markdown("---")
@@ -269,7 +269,7 @@ def render_file_generator():
                 "09_slot_200x50.dxf": "Продолговатое отверстие (457.08 мм)",
                 "10_complex_part.dxf": "Сложная деталь (1351.33 мм)",
             }
-            for i, dxf_file in enumerate(dxf_files):                # <-- ИЗМЕНЕНО: добавлен индекс i
+            for i, dxf_file in enumerate(dxf_files):                # ← индекс для уникальности ключа
                 file_name = dxf_file.name
                 desc = file_descriptions.get(file_name, "")
                 col1, col2 = st.columns([3, 1])
@@ -279,7 +279,7 @@ def render_file_generator():
                 with col2:
                     with open(dxf_file, 'rb') as f:
                         st.download_button("📥 Скачать", data=f.read(), file_name=file_name,
-                                           key=f"gen_file_{i}_{file_name}",  # <-- ИЗМЕНЕНО: уникальный ключ
+                                           key=f"gen_file_{i}_{file_name}",  # ← уникальный ключ
                                            use_container_width=True)
 
 
