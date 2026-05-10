@@ -582,5 +582,33 @@ def _run_nfp_debug(objects_data):
         try:
             nfp_between = no_fit_polygon(p1, part_origin, scale=config.clipper_scale)
             st.write(f"**NFP между первой деталью и исходной:** area {nfp_between.area:.2f}")
+            st.write(f"bounds: {nfp_between.bounds}")
         except Exception as e:
             st.error(f"Ошибка: {e}")
+
+    # 5. ТЕСТ С ВЫПУКЛОЙ ОБОЛОЧКОЙ
+    st.subheader("5. Размещение выпуклой оболочки детали")
+    hull = test_geom.convex_hull
+    st.write(f"Выпуклая оболочка: площадь {hull.area:.2f}, вершин {len(hull.exterior.coords)-1}")
+
+    parts_hull = [hull for _ in range(10)]
+    placer_hull = NfpPlacer(sheet, config)
+    placements_hull, unplaced_hull = placer_hull.place(parts_hull, [0]*10)
+
+    col1h, col2h = st.columns(2)
+    with col1h:
+        st.metric("Размещено", len(placements_hull))
+    with col2h:
+        st.metric("Не размещено", len(unplaced_hull))
+
+    if placements_hull:
+        placement_data_hull = []
+        for p in placements_hull:
+            inside = shrunk.contains(p.geometry)
+            placement_data_hull.append({
+                "Индекс": p.part_index,
+                "X опоры": round(p.x, 2),
+                "Y опоры": round(p.y, 2),
+                "Внутри листа": "✅" if inside else "❌"
+            })
+        st.dataframe(pd.DataFrame(placement_data_hull), hide_index=True, use_container_width=True)
