@@ -107,7 +107,6 @@ class TestFixturesGenerator:
         msp.add_circle((100, 15), radius=8)
         msp.add_circle((15, 90), radius=8)
         doc.saveas(self.output_dir / "07_bracket_200x150.dxf")
-        # ожидаемая длина из expected_results: 700 + 2*2*pi*8 = 700 + 100.531 = 800.531
         expected = 700 + 2 * 2 * math.pi * 8
         print(f"✓ 7 Кронштейн → {expected:.3f} мм")
 
@@ -121,34 +120,33 @@ class TestFixturesGenerator:
         expected = 2*math.pi*100 + 2*math.pi*50
         print(f"✓ 8 Кольцо → {expected:.3f} мм")
 
+    # ========== ИСПРАВЛЕННЫЙ МЕТОД ==========
     def create_slot(self):
         """9. Продолговатое отверстие 200×50 мм (овал)"""
         doc = ezdxf.new("R2010")
         msp = doc.modelspace()
-        # овал как прямоугольник с двумя полуокружностями
-        w, h = 200, 50
-        r = h / 2
-        points = [
-            (r, 0), (w - r, 0),
-            (w - r, h), (r, h)
+        w, h = 200.0, 50.0
+        r = h / 2.0                     # радиус полуокружностей = 25 мм
+
+        # Вершины без bulge – просто точки
+        vertices = [
+            (r, 0),                     # 0: начало левой дуги
+            (w - r, 0),                 # 1: конец левой дуги → начало верхней прямой
+            (w - r, h),                 # 2: конец верхней прямой → начало правой дуги
+            (r, h)                      # 3: конец правой дуги → начало нижней прямой
         ]
-        msp.add_lwpolyline(points, close=False)
-        # добавляем дуги на концах? Упростим через LWPOLYLINE с bulge
-        # но проще нарисовать прямоугольник и две дуги, но для простоты рисования используем LWPOLYLINE с bulge=1 для полукругов.
-        # Лучше нарисовать замкнутую полилинию с правильными bulge.
-        # Переопределим:
-        # Удалим предыдущий набросок и создадим правильный овал.
-        doc2 = ezdxf.new("R2010")
-        msp2 = doc2.modelspace()
-        # точки с bulge: (r,0) - линия до (w-r,0), затем bulge=1 (полукруг) до (w-r, h), затем линия до (r, h), затем bulge=1 до (r,0)
-        msp2.add_lwpolyline([
-            (r, 0, 0),
-            (w - r, 0, 1),
-            (w - r, h, 0),
-            (r, h, 1)
-        ], close=True)
-        doc2.saveas(self.output_dir / "09_slot_200x50.dxf")
-        expected = 2 * (200 - 50) + 2 * math.pi * 25
+
+        lwp = msp.add_lwpolyline(vertices, close=True)
+
+        # Явная установка bulge = 1 (полуокружность) для дуговых сегментов
+        # Индексы bulge соответствуют начальной вершине сегмента
+        lwp.set_bulge(1, 1)  # сегмент 1→2 : верхняя полуокружность (выпуклая вверх)
+        lwp.set_bulge(3, 1)  # сегмент 3→0 : нижняя полуокружность (выпуклая вниз)
+
+        doc.saveas(self.output_dir / "09_slot_200x50.dxf")
+
+        # Ожидаемая длина: две прямых + две полуокружности
+        expected = 2 * (w - 2 * r) + 2 * math.pi * r
         print(f"✓ 9 Продолговатое отверстие → {expected:.3f} мм")
 
     def create_complex_part(self):
@@ -157,7 +155,6 @@ class TestFixturesGenerator:
         msp = doc.modelspace()
         points = [(0, 0), (300, 0), (300, 200), (0, 200)]
         msp.add_lwpolyline(points, close=True)
-        # вырез 50х50 в центре правой стороны
         msp.add_lwpolyline([(250, 75), (300, 75), (300, 125), (250, 125)], close=True)
         msp.add_circle((150, 100), radius=30)
         msp.add_circle((20, 20), radius=5)
