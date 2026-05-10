@@ -1,5 +1,6 @@
 """
 Main nesting optimizer
+Добавлен параметр edge_margin.
 """
 
 import logging
@@ -22,11 +23,13 @@ logger = logging.getLogger(__name__)
 
 class AdvancedNestingOptimizer:
     def __init__(self, sheet_width: float, sheet_height: float, 
-                 spacing: float = 5.0, rotation_step: float = 15.0):
-        
+                 part_spacing: float = 5.0, edge_margin: float = None,
+                 rotation_step: float = 15.0):
+        # --- ИЗМЕНЕНО: добавлен edge_margin ---
         self.sheet_width = float(sheet_width)
         self.sheet_height = float(sheet_height)
-        self.spacing = float(spacing)
+        self.part_spacing = float(part_spacing)
+        self.edge_margin = float(edge_margin) if edge_margin is not None else self.part_spacing
         self.rotation_step = float(rotation_step)
 
     def optimize(self, part_geometry: ShapelyPolygon, quantity: int) -> NestingResult:
@@ -39,14 +42,16 @@ class AdvancedNestingOptimizer:
             if is_triangle:
                 logger.info("Triangle detected → Parquet Tessellation")
                 algorithm = ParquetTessellationAlgorithm(
-                    self.sheet_width, self.sheet_height, self.spacing
+                    self.sheet_width, self.sheet_height,
+                    self.part_spacing, self.edge_margin
                 )
                 return algorithm.optimize(simplified_geom, quantity, part_geometry.area)
             else:
                 logger.info("Using improved BottomLeft v2.1")
                 algorithm = BottomLeftAlgorithm(
-                    self.sheet_width, self.sheet_height, 
-                    self.spacing, self.rotation_step
+                    self.sheet_width, self.sheet_height,
+                    self.part_spacing, self.edge_margin,
+                    self.rotation_step
                 )
                 return algorithm.optimize(part_geometry, quantity)
 
