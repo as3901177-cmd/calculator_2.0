@@ -1,6 +1,7 @@
 """
 Улучшенный Bottom-Left Algorithm v2.1 (максимально безопасная версия)
 Исправлена проблема с ненулевыми начальными координатами геометрии.
+Добавлено разделение зазора между деталями и отступа от края листа.
 """
 
 import logging
@@ -28,19 +29,25 @@ class BottomLeftAlgorithm(BaseNestingAlgorithm):
     """Улучшенный алгоритм Bottom-Left v2.1"""
 
     def __init__(self, sheet_width: float, sheet_height: float, 
-                 spacing: float = 5.0, rotation_step: float = 15.0):
-        super().__init__(sheet_width, sheet_height, spacing)
+                 part_spacing: float = 5.0, edge_margin: float = None,
+                 rotation_step: float = 15.0):
+        # --- ИЗМЕНЕНО: разделение зазора и отступа от края ---
+        super().__init__(sheet_width, sheet_height, part_spacing)  # spacing теперь part_spacing
+        self.part_spacing = part_spacing
+        self.edge_margin = edge_margin if edge_margin is not None else part_spacing
         self.rotation_step = rotation_step
         self.max_placement_attempts = 220
 
-        self.position_generator = BottomLeftPositionGenerator(sheet_width, sheet_height, spacing)
+        # Генератор позиций получает оба параметра
+        self.position_generator = BottomLeftPositionGenerator(
+            sheet_width, sheet_height, self.part_spacing, self.edge_margin
+        )
         self.evaluator = PlacementEvaluator()
 
     def optimize(self, geometry: ShapelyPolygon, quantity: int, **kwargs) -> NestingResult:
         if not SHAPELY_AVAILABLE or geometry.is_empty:
             return self._create_empty_result(quantity, "Shapely error")
 
-        # === ИСПРАВЛЕНИЕ: надёжная нормализация координат ===
         normalized_geometry = self._normalize_geometry(geometry)
         
         sheets: List[Sheet] = []
@@ -71,13 +78,14 @@ class BottomLeftAlgorithm(BaseNestingAlgorithm):
         return self._calculate_statistics(sheets, quantity, placed_count, "BottomLeft v2.1")
 
     def _normalize_geometry(self, geom: ShapelyPolygon) -> ShapelyPolygon:
-        """Надёжная нормализация — решает проблему с большими координатами"""
+        """Надёжная нормализация с учётом отступа от края."""
         if not geom.is_valid:
             geom = geom.buffer(0)
 
         bounds = geom.bounds
-        offset_x = -bounds[0] + self.spacing * 0.5
-        offset_y = -bounds[1] + self.spacing * 0.5
+        # --- ИЗМЕНЕНО: смещаем так, чтобы левый нижний угол был в точке (edge_margin, edge_margin) ---
+        offset_x = self.edge_margin - bounds[0]
+        offset_y = self.edge_margin - bounds[1]
 
         normalized = translate(geom, xoff=offset_x, yoff=offset_y)
         logger.debug(f"Geometry normalized: offset=({offset_x:.2f}, {offset_y:.2f})")
@@ -116,7 +124,7 @@ class BottomLeftAlgorithm(BaseNestingAlgorithm):
             return False
 
         x, y, angle, final_geom = best_placement
-        placed_geom = translate(final_geom, xoff=x, yoff=y)   # финальное размещение
+        placed_geom = translate(final_geom, xoff=x, yoff=y)
 
         sheet.parts.append(PlacedPart(
             part_id=part_id,
@@ -134,10 +142,10 @@ class BottomLeftAlgorithm(BaseNestingAlgorithm):
 
     def _can_place(self, sheet: Sheet, geometry: ShapelyPolygon) -> bool:
         bounds = geometry.bounds
-        sp = self.spacing
-
-        if (bounds[0] < 0 or bounds[1] < 0 or 
-            bounds[2] > self.sheet_width or bounds[3] > self.sheet_height):
+        # --- ИЗМЕНЕНО: проверка границ с edge_margin ---
+        if (bounds[0] < self.edge_margin or bounds[1] < self.edge_margin or 
+            bounds[2] > self.sheet_width - self.edge_margin or 
+            bounds[3] > self.sheet_height - self.edge_margin):
             return False
 
         if not sheet.parts or not hasattr(sheet, 'spatial_index') or sheet.spatial_index is None:
@@ -145,11 +153,12 @@ class BottomLeftAlgorithm(BaseNestingAlgorithm):
 
         try:
             for other in sheet.spatial_index.query(geometry):
-                if geometry.distance(other) < sp - 1e-5:
+                # --- ИЗМЕНЕНО: используем part_spacing для зазора между деталями ---
+                if geometry.distance(other.geometry) < self.part_spacing - 1e-5:
                     return False
         except Exception:
             for part in sheet.parts:
-                if geometry.distance(part.geometry) < sp - 1e-5:
+                if geometry.distance(part.geometry) < self.part_spacing - 1e-5:
                     return False
         return True
 
