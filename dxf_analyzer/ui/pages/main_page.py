@@ -75,10 +75,13 @@ def _process_file(uploaded_file):
         try:
             doc, temp_path = read_dxf_file(uploaded_file, collector)
             objects_data = extract_entities(doc, collector)
-            # Сохраняем исходные данные для возможности повторного анализа без перезагрузки файла
+
+            # ================= ВСТАВЛЕННЫЙ ВЫЗОВ ОТЛАДКИ =================
+            _run_nfp_debug(objects_data)
+            # =============================================================
+
             st.session_state['doc'] = doc
             st.session_state['objects_data'] = objects_data
-            # Запускаем конвейер анализа (без автоисправлений)
             result = _run_analysis_pipeline(objects_data, collector, doc)
             if result:
                 _display_results(*result)
@@ -93,8 +96,6 @@ def _process_file(uploaded_file):
 
 
 def _run_analysis_pipeline(objects_data, collector, doc):
-    """Запускает полный цикл: статистика, врезки, контуры, классификация, валидация.
-    Автоисправления не применяются – они будут предложены пользователю."""
     stats, color_stats, total_length = _calculate_statistics(objects_data)
     piercing_count, piercing_details = count_piercings_advanced(objects_data, collector)
     show_error_report(collector)
@@ -103,7 +104,6 @@ def _run_analysis_pipeline(objects_data, collector, doc):
         st.warning("⚠️ В чертеже не найдено объектов для расчета")
         return None
 
-    # Построение замкнутых контуров
     chain_polygons = {}
     for chain in piercing_details['chains']:
         if chain['type'] == 'closed':
@@ -118,7 +118,6 @@ def _run_analysis_pipeline(objects_data, collector, doc):
     else:
         st.info("ℹ️ Замкнутые полигональные контуры не обнаружены")
 
-    # Классификация
     if chain_polygons:
         external_id, internal_ids, contour_warnings = classify_contours(chain_polygons)
         st.session_state['contour_classification'] = {
@@ -135,7 +134,6 @@ def _run_analysis_pipeline(objects_data, collector, doc):
             for w in warns:
                 st.warning(f"🔸 Контур #{cid}: {w}")
 
-        # Валидация
         fixed_polygons, validation_messages = validate_all_contours(
             external_id, internal_ids, chain_polygons
         )
@@ -152,14 +150,11 @@ def _run_analysis_pipeline(objects_data, collector, doc):
                 else:
                     st.info(f"ℹ️ {msg}")
 
-        # Проверка качества
         quality_report = generate_quality_report(
             chain_polygons, fixed_polygons, piercing_details,
             objects_data, external_id, internal_ids
         )
         st.session_state['quality_report'] = quality_report
-
-        # === БЛОК ПРЕДЛАГАЕМЫХ ИСПРАВЛЕНИЙ ===
         _prepare_suggested_fixes(objects_data, quality_report)
 
     else:
@@ -174,12 +169,10 @@ def _run_analysis_pipeline(objects_data, collector, doc):
 
 
 def _prepare_suggested_fixes(objects_data, quality_report):
-    """Формирует список предлагаемых исправлений и сохраняет в st.session_state."""
     fixes = {
         'hanging_fixes': [],
         'has_duplicates': False
     }
-    # Висячие линии с возможностью автозамыкания
     for h in quality_report['hanging_objects']:
         if h['can_autoclose']:
             fixes['hanging_fixes'].append({
@@ -188,9 +181,8 @@ def _prepare_suggested_fixes(objects_data, quality_report):
                 'object_count': h['object_count'],
                 'total_length': h['total_length']
             })
-    # Проверка на дубликаты (предварительная, без фактического изменения)
     original_count = len(objects_data)
-    dedup = remove_duplicate_entities(objects_data.copy())  # не меняем оригинал
+    dedup = remove_duplicate_entities(objects_data.copy())
     if len(dedup) < original_count:
         fixes['has_duplicates'] = True
         fixes['duplicates_count'] = original_count - len(dedup)
@@ -202,14 +194,11 @@ def _prepare_suggested_fixes(objects_data, quality_report):
 
 
 def _apply_manual_fixes(selected_hanging, apply_dedup):
-    """Применяет выбранные исправления к текущему objects_data в st.session_state.
-    Возвращает обновлённый objects_data и collector с информацией."""
     if 'doc' not in st.session_state or 'objects_data' not in st.session_state:
         return None, None
     objects_data = st.session_state['objects_data'].copy()
     collector = ErrorCollector()
 
-    # 1. Замыкание выбранных цепей
     if selected_hanging:
         for fix in selected_hanging:
             chain_id = fix['chain_id']
@@ -224,7 +213,6 @@ def _apply_manual_fixes(selected_hanging, apply_dedup):
                 collector.add_warning('MANUALFIX', chain_id,
                                       "Не удалось замкнуть цепь (изменились условия)")
 
-    # 2. Удаление дубликатов
     if apply_dedup:
         before = len(objects_data)
         objects_data = remove_duplicate_entities(objects_data)
@@ -232,16 +220,12 @@ def _apply_manual_fixes(selected_hanging, apply_dedup):
         if removed > 0:
             collector.add_info('MANUALFIX', 0, f"Удалено {removed} дублирующихся объектов")
 
-    # Обновляем стейт
     st.session_state['objects_data'] = objects_data
-    # Сбрасываем предложенные исправления
     st.session_state['suggested_fixes'] = None
     return objects_data, collector
 
 
 def _rerun_analysis(objects_data, collector, doc):
-    """Повторно запускает конвейер анализа с обновлёнными данными."""
-    # Очищаем старые результаты
     for key in ['chain_polygons', 'contour_classification', 'fixed_polygons',
                 'validation_messages', 'quality_report']:
         if key in st.session_state:
@@ -289,7 +273,6 @@ def _display_results(objects_data, total_length, piercing_count,
     if piercing_details['chains']:
         _display_chain_details(piercing_details['chains'])
 
-    # Отображение классификации контуров
     if 'contour_classification' in st.session_state and st.session_state['contour_classification']:
         classif = st.session_state['contour_classification']
         with st.expander("📌 Классификация контуров", expanded=True):
@@ -305,7 +288,6 @@ def _display_results(objects_data, total_length, piercing_count,
                 for w in warns:
                     st.warning(f"🔸 Контур #{cid}: {w}")
 
-    # Отображение сообщений валидации
     if 'validation_messages' in st.session_state and st.session_state['validation_messages']:
         validation_msgs = st.session_state['validation_messages']
         with st.expander("🔍 Результаты валидации контуров", expanded=False):
@@ -318,7 +300,6 @@ def _display_results(objects_data, total_length, piercing_count,
                     else:
                         st.info(msg)
 
-    # Отображение сводного отчёта о качестве контуров
     if 'quality_report' in st.session_state and st.session_state['quality_report']:
         qr = st.session_state['quality_report']
         with st.expander("📋 Сводный отчёт о качестве контуров", expanded=True):
@@ -344,7 +325,6 @@ def _display_results(objects_data, total_length, piercing_count,
                 for exc in qr['excess_objects_in_closed']:
                     st.write(f"Объект #{exc['num']}: {exc['type']}, цепь {exc['chain_id']} — {exc['description']}")
 
-    # === БЛОК РУЧНОГО ПОДТВЕРЖДЕНИЯ ИСПРАВЛЕНИЙ ===
     if 'suggested_fixes' in st.session_state and st.session_state['suggested_fixes']:
         fixes = st.session_state['suggested_fixes']
         st.markdown("---")
@@ -369,9 +349,8 @@ def _display_results(objects_data, total_length, piercing_count,
         if st.button("✅ Применить выбранные исправления", type="primary"):
             objects_data_new, collector_new = _apply_manual_fixes(selected_hanging, apply_dedup)
             if objects_data_new is not None:
-                # Повторный анализ с обновлёнными данными
                 _rerun_analysis(objects_data_new, collector_new, doc)
-                st.experimental_rerun()  # чтобы сразу показать обновлённый UI
+                st.experimental_rerun()
             else:
                 st.error("Не удалось применить исправления.")
 
@@ -486,3 +465,122 @@ def _render_footer():
         ✂️ CAD Analyzer Pro v24.0 | Лицензия MIT | АНАЛИЗ СВЯЗНОСТИ КОНТУРОВ
     </div>
     """, unsafe_allow_html=True)
+
+
+# ==================== ОТЛАДОЧНАЯ ФУНКЦИЯ ====================
+def _run_nfp_debug(objects_data):
+    """
+    Отладочная функция: проверяет работу NFP и размещение прямо на странице.
+    """
+    from shapely.geometry import Polygon, box
+    from dxf_analyzer.nesting.converters.dxf_to_shapely import dxf_object_to_shapely
+    from dxf_analyzer.nesting.algorithms.nfp import (
+        minkowski_difference, no_fit_polygon, union_of_polygons, difference
+    )
+    from dxf_analyzer.nesting.algorithms.placer import NfpPlacer
+    from dxf_analyzer.nesting.nesting_config import NestingConfig
+
+    st.markdown("---")
+    st.markdown("## 🔧 Отладка NFP и размещения")
+
+    # Найти первую замкнутую деталь
+    test_geom = None
+    for obj in objects_data:
+        if obj.entity_type in ('LWPOLYLINE', 'POLYLINE', 'CIRCLE', 'ELLIPSE'):
+            try:
+                geom = dxf_object_to_shapely(obj)
+                if geom is not None and geom.is_valid and not geom.is_empty:
+                    test_geom = geom
+                    st.write(f"**Тестовая деталь:** {obj.entity_type} #{obj.num} "
+                             f"(площадь {geom.area:.2f}, вершин {len(geom.exterior.coords)-1})")
+                    break
+            except Exception as e:
+                st.error(f"Ошибка конвертации объекта #{obj.num}: {e}")
+
+    if test_geom is None:
+        st.error("❌ Не удалось найти подходящую замкнутую деталь для теста.")
+        return
+
+    config = NestingConfig(
+        sheet_width=1000,
+        sheet_height=800,
+        part_spacing=3.0,
+        edge_margin=5.0,
+        clipper_scale=10000
+    )
+
+    sheet = box(0, 0, config.sheet_width, config.sheet_height)
+
+    # Смещаем деталь к началу координат
+    minx, miny, _, _ = test_geom.bounds
+    part_origin = Polygon([(x - minx, y - miny) for x, y in test_geom.exterior.coords])
+
+    st.subheader("1. Minkowski difference (лист ⊖ деталь)")
+    try:
+        nfp_direct = minkowski_difference(sheet, part_origin, config.clipper_scale)
+        st.write(f"**NFP area:** {nfp_direct.area:.2f}")
+        st.write(f"**NFP bounds:** {nfp_direct.bounds}")
+        st.write(f"**Валидность:** {nfp_direct.is_valid}, пустота: {nfp_direct.is_empty}")
+    except Exception as e:
+        st.error(f"Ошибка: {e}")
+
+    st.subheader("2. Внутренний fit-полигон")
+    shrunk = sheet.buffer(-config.edge_margin)
+    st.write(f"Уменьшенный лист: bounds {shrunk.bounds}, area {shrunk.area:.2f}")
+    try:
+        inner_fit = minkowski_difference(shrunk, part_origin, config.clipper_scale)
+        st.write(f"**Inner fit area:** {inner_fit.area:.2f}")
+        st.write(f"**Inner fit bounds:** {inner_fit.bounds}")
+        st.write(f"**Валидность:** {inner_fit.is_valid}, пустота: {inner_fit.is_empty}")
+    except Exception as e:
+        st.error(f"Ошибка: {e}")
+
+    st.subheader("3. Размещение 10 копий (без поворота)")
+    parts_to_place = [test_geom for _ in range(10)]
+    rotations = [0] * 10
+    placer = NfpPlacer(sheet, config)
+    placements, unplaced = placer.place(parts_to_place, rotations)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Размещено", len(placements))
+    with col2:
+        st.metric("Не размещено", len(unplaced))
+
+    if placements:
+        placement_data = []
+        all_inside = True
+        for p in placements:
+            inside = shrunk.contains(p.geometry)
+            if not inside:
+                all_inside = False
+            placement_data.append({
+                "Индекс": p.part_index,
+                "X опоры": round(p.x, 2),
+                "Y опоры": round(p.y, 2),
+                "Внутри листа": "✅" if inside else "❌"
+            })
+        st.dataframe(pd.DataFrame(placement_data), hide_index=True, use_container_width=True)
+
+        if not all_inside:
+            st.error("❌ Некоторые детали вышли за границы!")
+            for p in placements:
+                if not shrunk.contains(p.geometry):
+                    dist = p.geometry.distance(shrunk.boundary)
+                    st.write(f"Деталь {p.part_index} на расстоянии {dist:.3f} мм от границы")
+        else:
+            st.success("✅ Все детали внутри листа (с учётом отступа)")
+    else:
+        st.warning("Ни одна деталь не размещена")
+
+    if unplaced:
+        st.write(f"Неразмещённые индексы: {unplaced}")
+
+    if len(placements) >= 2:
+        st.subheader("4. Проверка NFP между первыми двумя деталями")
+        p1 = placements[0].geometry
+        try:
+            nfp_between = no_fit_polygon(p1, part_origin, scale=config.clipper_scale)
+            st.write(f"**NFP между первой деталью и исходной:** area {nfp_between.area:.2f}")
+        except Exception as e:
+            st.error(f"Ошибка: {e}")
