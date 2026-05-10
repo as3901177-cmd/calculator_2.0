@@ -120,7 +120,6 @@ class TestFixturesGenerator:
         expected = 2*math.pi*100 + 2*math.pi*50
         print(f"✓ 8 Кольцо → {expected:.3f} мм")
 
-    # ========== ИСПРАВЛЕННЫЙ МЕТОД (format='xyb') ==========
     def create_slot(self):
         """9. Продолговатое отверстие 200×50 мм (овал)"""
         doc = ezdxf.new("R2010")
@@ -150,14 +149,34 @@ class TestFixturesGenerator:
         """10. Сложная деталь: пластина 300×200 с вырезом, центральным отверстием и крепежом"""
         doc = ezdxf.new("R2010")
         msp = doc.modelspace()
-        points = [(0, 0), (300, 0), (300, 200), (0, 200)]
+
+        # Единый внешний контур с выемкой 50×50 мм справа по центру
+        points = [
+            (0, 0),           # 0
+            (300, 0),         # 1
+            (300, 75),        # 2
+            (250, 75),        # 3
+            (250, 125),       # 4
+            (300, 125),       # 5
+            (300, 200),       # 6
+            (0, 200)          # 7
+        ]
         msp.add_lwpolyline(points, close=True)
-        msp.add_lwpolyline([(250, 75), (300, 75), (300, 125), (250, 125)], close=True)
+
+        # Центральное отверстие Ø60 мм
         msp.add_circle((150, 100), radius=30)
+
+        # Крепёжные отверстия Ø10 мм
         msp.add_circle((20, 20), radius=5)
         msp.add_circle((280, 180), radius=5)
+
         doc.saveas(self.output_dir / "10_complex_part.dxf")
-        expected = 2*(300+200) + 2*50 + 2*math.pi*30 + 2*2*math.pi*5
+
+        # Ожидаемая длина:
+        #   периметр внешнего контура = 2*(300+200) - 50 + 3*50 = 1100 мм
+        #   окружность Ø60 = 2π·30 ≈ 188.50 мм
+        #   2 окружности Ø10 = 2 * 2π·5 ≈ 62.83 мм
+        expected = 1100 + 2 * math.pi * 30 + 2 * 2 * math.pi * 5
         print(f"✓ 10 Сложная деталь → {expected:.3f} мм")
 
     def create_ellipse(self):
