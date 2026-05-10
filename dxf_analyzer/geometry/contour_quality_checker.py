@@ -15,10 +15,6 @@ def analyze_hanging_lines(
     objects_data: List[DXFObject],
     tolerance: float = TOLERANCE
 ) -> List[Dict[str, Any]]:
-    """
-    Анализ висячих линий (незамкнутых цепей и изолированных объектов).
-    Возвращает список словарей с информацией о каждой проблемной цепи.
-    """
     hanging_report = []
     for chain in piercing_details['chains']:
         if chain['type'] in ('open', 'isolated'):
@@ -43,7 +39,6 @@ def analyze_hanging_lines(
 
 
 def _get_chain_endpoints(chain_objs: List[DXFObject]) -> Optional[Tuple[Tuple[float,float], Tuple[float,float]]]:
-    """Находит крайние точки цепочки объектов (начало первого и конец последнего)."""
     from .transforms import get_endpoints
 
     all_points = []
@@ -73,10 +68,6 @@ def check_closed_contours_quality(
     external_id: int,
     internal_ids: List[int]
 ) -> Dict[int, Dict[str, Any]]:
-    """
-    Проверяет качество замкнутых контуров (внешнего и внутренних).
-    Возвращает словарь {chain_id: {'is_valid': bool, 'issues': [...], 'area': float, 'orientation': str}}
-    """
     quality = {}
     for cid, poly in chain_polygons.items():
         info = {
@@ -99,33 +90,23 @@ def check_closed_contours_quality(
     return quality
 
 
-# ============================================================
-#  РЕАЛЬНАЯ ЛОГИКА ПРОВЕРКИ ЛИШНИХ ОБЪЕКТОВ ВНУТРИ КОНТУРОВ
-# ============================================================
 def check_closed_chain_objects(
     chain_polygons: Dict[int, Polygon],
     objects_data: List[DXFObject],
-    piercing_details: Dict[str, Any],
-    tolerance: float = TOLERANCE
+    piercing_details: Dict[str, Any] = None,    # для совместимости
+    tolerance: float = TOLERANCE,
+    external_id: int = None                     # новый параметр
 ) -> Dict[str, Any]:
     """
     Ищет объекты (линии, дуги и т.п.), которые геометрически находятся внутри
-    замкнутых контуров, но не принадлежат им. Такие объекты часто являются
-    «мусором» и должны быть удалены для получения чистого контура.
-
-    Возвращает словарь с ключом 'excess_objects_in_closed' – список словарей
-    с описанием каждого подозрительного объекта.
+    замкнутых контуров, но не принадлежат им.
     """
     excess_objects = []
-
-    # Для быстрого доступа к chain_id каждого объекта по его номеру
-    obj_chain_map = {obj.num: obj.chain_id for obj in objects_data if hasattr(obj, 'num')}
 
     for chain_id, polygon in chain_polygons.items():
         if not polygon.is_valid or polygon.is_empty:
             continue
 
-        # Определяем, является ли этот контур внешним (самым большим по площади)
         is_external = False
         internal_polygons = []
         if len(chain_polygons) > 1:
@@ -135,7 +116,6 @@ def check_closed_chain_objects(
                 internal_polygons = [poly for cid, poly in chain_polygons.items() if cid != chain_id]
 
         for obj in objects_data:
-            # Пропускаем объекты, уже принадлежащие этому контуру
             if obj.chain_id == chain_id:
                 continue
 
@@ -144,10 +124,7 @@ def check_closed_chain_objects(
 
             point = Point(obj.center)
 
-            # Точка внутри полигона?
             if polygon.contains(point):
-                # Если это внешний контур и точка лежит в одном из внутренних отверстий,
-                # то не считаем её лишней для внешнего контура
                 if is_external:
                     inside_hole = any(hole.contains(point) for hole in internal_polygons if hole.is_valid)
                     if inside_hole:
@@ -177,9 +154,6 @@ def generate_quality_report(
     internal_ids: List[int],
     tolerance: float = TOLERANCE
 ) -> Dict[str, Any]:
-    """
-    Главная функция: возвращает словарь с полным отчётом.
-    """
     report = {
         'closed_contours': {},
         'hanging_objects': [],
@@ -194,7 +168,6 @@ def generate_quality_report(
         }
     }
 
-    # Замкнутые контуры
     closed_quality = check_closed_contours_quality(
         chain_polygons, fixed_polygons, external_id, internal_ids
     )
@@ -205,12 +178,10 @@ def generate_quality_report(
         if v['is_valid'] and not v['issues']
     )
 
-    # Висячие линии
     hanging = analyze_hanging_lines(piercing_details, objects_data, tolerance)
     report['hanging_objects'] = hanging
     report['summary']['hanging_count'] = len(hanging)
 
-    # Объекты без цепи
     unassigned = [obj for obj in objects_data if obj.chain_id == -1]
     report['unassigned_objects'] = [
         {'num': obj.num, 'type': obj.entity_type, 'length': obj.length}
@@ -218,9 +189,9 @@ def generate_quality_report(
     ]
     report['summary']['unassigned_count'] = len(unassigned)
 
-    # Лишние объекты внутри контуров – теперь с реальной логикой
     excess_info = check_closed_chain_objects(
-        chain_polygons, objects_data, piercing_details, tolerance
+        chain_polygons, objects_data, piercing_details, tolerance,
+        external_id=external_id   # передаём external_id
     )
     report['excess_objects_in_closed'] = excess_info['excess_objects_in_closed']
     report['summary']['excess_count'] = len(report['excess_objects_in_closed'])
