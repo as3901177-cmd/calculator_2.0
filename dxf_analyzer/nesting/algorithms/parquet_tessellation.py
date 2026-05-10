@@ -1,5 +1,6 @@
 """
 Паркетная тесселяция v9.0 ULTIMATE - Чередующиеся ряды для максимальной плотности
+Добавлен раздельный отступ от края листа.
 """
 
 import math
@@ -18,15 +19,7 @@ from ..models import NestingResult, Sheet, PlacedPart
 
 
 def create_parquet_pattern(geom: ShapelyPolygon) -> Optional[Tuple]:
-    """
-    Создание паркетного паттерна для тесселяции треугольников
-    
-    Args:
-        geom: Геометрия треугольника
-        
-    Returns:
-        Optional[Tuple]: (tri_up, tri_down, base_width, height) или None
-    """
+    """..."""  # (без изменений)
     try:
         coords = list(geom.exterior.coords)[:-1]
         if len(coords) != 3:
@@ -34,7 +27,6 @@ def create_parquet_pattern(geom: ShapelyPolygon) -> Optional[Tuple]:
         
         p0, p1, p2 = coords[0], coords[1], coords[2]
         
-        # Поиск самой длинной стороны (база)
         side_01 = math.hypot(p1[0] - p0[0], p1[1] - p0[1])
         side_12 = math.hypot(p2[0] - p1[0], p2[1] - p1[1])
         side_20 = math.hypot(p0[0] - p2[0], p0[1] - p2[1])
@@ -55,7 +47,6 @@ def create_parquet_pattern(geom: ShapelyPolygon) -> Optional[Tuple]:
         area = abs(geom.area)
         height = (2 * area) / base_len if base_len > 1e-6 else 0
         
-        # Расчёт позиции вершины по оси X
         base_vec = (base_end[0] - base_start[0], base_end[1] - base_start[1])
         apex_vec = (apex[0] - base_start[0], apex[1] - base_start[1])
         
@@ -66,14 +57,12 @@ def create_parquet_pattern(geom: ShapelyPolygon) -> Optional[Tuple]:
         else:
             apex_x = base_len / 2
         
-        # Треугольник вершиной ВВЕРХ ▲
         tri_up = ShapelyPolygon([
             (0, 0),
             (base_len, 0),
             (apex_x, height)
         ])
         
-        # Треугольник вершиной ВНИЗ ▼ (поворот на 180° вокруг центра базы)
         center_x = base_len / 2
         center_y = 0
         tri_down = shapely_rotate(tri_up, 180, origin=(center_x, center_y))
@@ -95,20 +84,16 @@ class ParquetTessellationAlgorithm(BaseNestingAlgorithm):
     Паркетная тесселяция v9.0 ULTIMATE
     Чередующиеся ряды для максимальной плотности
     """
-    
+
+    def __init__(self, sheet_width: float, sheet_height: float,
+                 part_spacing: float = 5.0, edge_margin: float = None):
+        # --- ИЗМЕНЕНО: разделение зазора и отступа ---
+        super().__init__(sheet_width, sheet_height, part_spacing)
+        self.part_spacing = part_spacing
+        self.edge_margin = edge_margin if edge_margin is not None else part_spacing
+
     def optimize(self, geometry: ShapelyPolygon, quantity: int, 
                  original_area: Optional[float] = None) -> NestingResult:
-        """
-        Оптимизация раскроя треугольников с паркетным паттерном
-        
-        Args:
-            geometry: Геометрия треугольника (нормализованная)
-            quantity: Количество треугольников
-            original_area: Исходная площадь треугольника (до нормализации)
-            
-        Returns:
-            NestingResult: Результат оптимизации
-        """
         pattern = create_parquet_pattern(geometry)
         if pattern is None:
             return self._create_empty_result(quantity, "Не удалось создать паркетный паттерн")
@@ -120,13 +105,15 @@ class ParquetTessellationAlgorithm(BaseNestingAlgorithm):
         print(f"  Ширина базы: {base_width:.2f} мм")
         print(f"  Высота: {height:.2f} мм")
         
-        sp = self.spacing
-        usable_w = self.sheet_width - 2 * sp
-        usable_h = self.sheet_height - 2 * sp
+        em = self.edge_margin
+        # --- ИЗМЕНЕНО: использование edge_margin вместо spacing ---
+        usable_w = self.sheet_width - 2 * em
+        usable_h = self.sheet_height - 2 * em
         
         triangle_width = base_width / 2
+        # Межтреугольный зазор не добавляется, треугольники стыкуются вплотную
         triangles_per_row = max(1, int(usable_w / triangle_width))
-        rows = max(1, int(usable_h / (height + sp)))
+        rows = max(1, int(usable_h / (height + self.part_spacing)))  # part_spacing между рядами
         
         capacity_per_sheet = triangles_per_row * rows
         
@@ -139,7 +126,6 @@ class ParquetTessellationAlgorithm(BaseNestingAlgorithm):
         parts_placed = 0
         part_id = 1
         
-        # Главный цикл размещения
         while part_id <= quantity:
             current_sheet = Sheet(
                 sheet_number=len(sheets) + 1,
@@ -154,53 +140,43 @@ class ParquetTessellationAlgorithm(BaseNestingAlgorithm):
                 if part_id > quantity:
                     break
                 
-                # ✅ КЛЮЧЕВОЕ НОВОВВЕДЕНИЕ: чередование типа ряда
-                # Чётные ряды (0, 2, 4...): начинаются с ▲
-                # Нечётные ряды (1, 3, 5...): начинаются с ▼
                 row_starts_with_up = (row_idx % 2 == 0)
+                y_base = em + row_idx * (height + self.part_spacing)
                 
-                # Y-позиция базы ряда
-                y_base = sp + row_idx * (height + sp)
-                
-                if y_base + height > self.sheet_height - sp:
+                if y_base + height > self.sheet_height - em:
                     break
                 
                 for col_idx in range(triangles_per_row):
                     if part_id > quantity:
                         break
                     
-                    # X-позиция треугольника
-                    x_pos = sp + col_idx * triangle_width
+                    x_pos = em + col_idx * triangle_width
                     
-                    if x_pos + base_width > self.sheet_width - sp:
+                    if x_pos + base_width > self.sheet_width - em:
                         break
                     
-                    # ✅ ЧЕРЕДОВАНИЕ С УЧЁТОМ ТИПА РЯДА
                     if row_starts_with_up:
                         is_up = (col_idx % 2 == 0)
                     else:
                         is_up = (col_idx % 2 == 1)
                     
                     if is_up:
-                        # ▲ вершиной вверх
                         placed_geom = translate(tri_up, xoff=x_pos, yoff=y_base)
                         symbol = "▲"
                         rotation = 0
                     else:
-                        # ▼ вершиной вниз
                         placed_geom = translate(tri_down, xoff=x_pos, yoff=y_base + height)
                         symbol = "▼"
                         rotation = 180
                     
                     bounds = placed_geom.bounds
                     
-                    # Проверка границ
-                    if (bounds[0] < sp - 1e-6 or bounds[1] < sp - 1e-6 or
-                        bounds[2] > self.sheet_width - sp + 1e-6 or
-                        bounds[3] > self.sheet_height - sp + 1e-6):
+                    # --- ИЗМЕНЕНО: проверка границ с edge_margin ---
+                    if (bounds[0] < em - 1e-6 or bounds[1] < em - 1e-6 or
+                        bounds[2] > self.sheet_width - em + 1e-6 or
+                        bounds[3] > self.sheet_height - em + 1e-6):
                         continue
                     
-                    # Размещаем
                     current_sheet.parts.append(PlacedPart(
                         part_id=part_id,
                         part_name=f"Деталь #{part_id} {symbol}",
@@ -233,7 +209,6 @@ class ParquetTessellationAlgorithm(BaseNestingAlgorithm):
         )
     
     def _create_empty_result(self, quantity: int, error_msg: str) -> NestingResult:
-        """Создание пустого результата"""
         return NestingResult(
             sheets=[], total_parts=quantity, parts_placed=0,
             parts_not_placed=quantity, total_material_used=0.0,
