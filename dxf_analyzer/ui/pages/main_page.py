@@ -467,11 +467,8 @@ def _render_footer():
     """, unsafe_allow_html=True)
 
 
-# ==================== ОТЛАДОЧНАЯ ФУНКЦИЯ (ИСПРАВЛЕНА) ====================
+# ==================== ОТЛАДОЧНАЯ ФУНКЦИЯ (устойчивая к MultiPolygon) ====================
 def _run_nfp_debug(objects_data):
-    """
-    Отладочная функция: проверяет работу NFP и размещение прямо на странице.
-    """
     from shapely.geometry import Polygon, MultiPolygon, box
     from dxf_analyzer.nesting.converters.dxf_to_shapely import dxf_object_to_shapely
     from dxf_analyzer.nesting.algorithms.nfp import (
@@ -480,24 +477,29 @@ def _run_nfp_debug(objects_data):
     from dxf_analyzer.nesting.algorithms.placer import NfpPlacer
     from dxf_analyzer.nesting.nesting_config import NestingConfig
 
+    def ensure_polygon(geom):
+        """Приводит MultiPolygon к Polygon (макс площадь) или None."""
+        if geom is None or geom.is_empty:
+            return None
+        if isinstance(geom, MultiPolygon):
+            geom = max(geom.geoms, key=lambda g: g.area)
+        if isinstance(geom, Polygon) and geom.is_valid:
+            return geom
+        return None
+
     st.markdown("---")
     st.markdown("## 🔧 Отладка NFP и размещения")
 
-    # Найти первую замкнутую деталь
     test_geom = None
     for obj in objects_data:
         if obj.entity_type in ('LWPOLYLINE', 'POLYLINE', 'CIRCLE', 'ELLIPSE'):
             try:
-                geom = dxf_object_to_shapely(obj)
-                if geom is not None and not geom.is_empty:
-                    # Если MultiPolygon – выбираем полигон с максимальной площадью
-                    if isinstance(geom, MultiPolygon):
-                        geom = max(geom.geoms, key=lambda g: g.area)
-                    if isinstance(geom, Polygon) and geom.is_valid:
-                        test_geom = geom
-                        st.write(f"**Тестовая деталь:** {obj.entity_type} #{obj.num} "
-                                 f"(площадь {geom.area:.2f}, вершин {len(geom.exterior.coords)-1})")
-                        break
+                geom = ensure_polygon(dxf_object_to_shapely(obj))
+                if geom is not None:
+                    test_geom = geom
+                    st.write(f"**Тестовая деталь:** {obj.entity_type} #{obj.num} "
+                             f"(площадь {geom.area:.2f}, вершин {len(geom.exterior.coords)-1})")
+                    break
             except Exception as e:
                 st.error(f"Ошибка конвертации объекта #{obj.num}: {e}")
 
@@ -515,7 +517,6 @@ def _run_nfp_debug(objects_data):
 
     sheet = box(0, 0, config.sheet_width, config.sheet_height)
 
-    # Смещаем деталь к началу координат
     minx, miny, _, _ = test_geom.bounds
     part_origin = Polygon([(x - minx, y - miny) for x, y in test_geom.exterior.coords])
 
