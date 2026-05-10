@@ -72,7 +72,8 @@ def install_dependencies():
         'streamlit': 'streamlit>=1.28.0',
         'pandas': 'pandas>=2.0.0',
         'numpy': 'numpy>=1.24.0',
-        'shapely': 'shapely>=2.0.0'
+        'shapely': 'shapely>=2.0.0',
+        'pyclipper': 'pyclipper>=1.3.0'   # <-- добавлено
     }
     
     missing = []
