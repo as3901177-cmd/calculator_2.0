@@ -209,7 +209,11 @@ def _run_optimization(selected_geom, quantity, sheet_width, sheet_height, part_s
     """Запуск оптимизации раскроя с новыми параметрами"""
     import io
     import sys
-    
+    # ---------- НОВЫЕ ИМПОРТЫ ----------
+    from ...nesting.debug_utils import run_nfp_debug_analysis
+    from ...nesting.nesting_config import NestingConfig
+    # ----------------------------------
+
     with st.expander("📋 Логи оптимизации", expanded=False):
         old_stdout = sys.stdout
         sys.stdout = buffer = io.StringIO()
@@ -221,7 +225,18 @@ def _run_optimization(selected_geom, quantity, sheet_width, sheet_height, part_s
                 edge_margin=edge_margin
             )
             result = optimizer.optimize(selected_geom, quantity)
-            
+
+            # ================= ДОБАВЛЕНО: ОТЛАДОЧНЫЙ АНАЛИЗ NFP =================
+            config = NestingConfig(
+                sheet_width=sheet_width,
+                sheet_height=sheet_height,
+                part_spacing=part_spacing,
+                edge_margin=edge_margin
+            )
+            debug_report = run_nfp_debug_analysis(selected_geom, config, quantity=10)
+            print(debug_report)
+            # ===================================================================
+
             logs = buffer.getvalue()
             sys.stdout = old_stdout
             st.code(logs, language='text')
